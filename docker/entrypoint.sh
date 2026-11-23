@@ -14,7 +14,7 @@ php artisan config:clear
 
 echo "Running migrations..."
 if ! php artisan migrate --force --no-interaction; then
-    echo "ERROR: Migrations failed. Check DB_* variables and Neon connectivity."
+    echo "ERROR: Migrations failed. Check DB_URL (Neon pooling connection string)."
     exit 1
 fi
 
