@@ -20,6 +20,16 @@ body {
     margin: 0;
     min-width: 320px;
     color: #162326;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+}
+
+.pb-safe {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+.pt-safe {
+    padding-top: max(0.5rem, env(safe-area-inset-top));
 }
 
 button,

@@ -13,7 +13,7 @@ class DashboardController extends Controller
     public function index(): Response
     {
         $today = now()->startOfDay();
-        $orders = Order::where('created_at', '>=', $today)->where('status', 'COMPLETED');
+        $orders = Order::where('created_at', '>=', $today)->whereIn('status', ['BILLED', 'COMPLETED']);
         $expenses = Expense::whereDate('expense_date', today())
             ->selectRaw('category, SUM(amount) as total')
             ->groupBy('category')

@@ -16,7 +16,7 @@ class ReportController extends Controller
         abort_unless(in_array($period, ['date', 'week', 'month', 'year'], true), 422, 'Invalid report period.');
         $from = $request->date('from')?->startOfDay() ?? ($period === 'month' ? now()->startOfMonth() : now()->subDays(30)->startOfDay());
         $to = $request->date('to')?->endOfDay() ?? now()->endOfDay();
-        $orders = Order::whereBetween('created_at', [$from, $to])->where('status', 'COMPLETED');
+        $orders = Order::whereBetween('created_at', [$from, $to])->whereIn('status', ['BILLED', 'COMPLETED']);
         $orderPeriod = $this->periodExpression('created_at', $period);
         $expensePeriod = $this->periodExpression('expense_date', $period);
         $sales = (clone $orders)->selectRaw("{$orderPeriod} as period, COUNT(*) as orders, SUM(total) as sales")

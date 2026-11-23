@@ -98,6 +98,10 @@ return [
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
             'neon_endpoint' => env('DB_NEON_ENDPOINT'),
+            // Neon’s pooled connection drops server-side prepared statements mid-transaction.
+            'options' => [
+                PDO::ATTR_EMULATE_PREPARES => true,
+            ],
         ],
 
         'sqlsrv' => [

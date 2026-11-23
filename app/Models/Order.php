@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Order extends Model
 {
     protected $fillable = [
-        'order_number', 'order_type', 'table_id', 'cashier_id', 'customer_id',
+        'order_number', 'order_type', 'table_id', 'cashier_id', 'server_id', 'customer_id',
         'subtotal', 'discount', 'total', 'status', 'notes',
     ];
 
@@ -23,6 +23,11 @@ class Order extends Model
     public function cashier()
     {
         return $this->belongsTo(User::class, 'cashier_id');
+    }
+
+    public function server()
+    {
+        return $this->belongsTo(User::class, 'server_id');
     }
 
     public function customer()
