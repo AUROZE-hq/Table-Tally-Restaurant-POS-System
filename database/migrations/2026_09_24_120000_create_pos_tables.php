@@ -21,12 +21,13 @@ return new class extends Migration
             $table->string('order_number')->unique();
             $table->enum('order_type', ['DINE_IN', 'TAKEAWAY']);
             $table->foreignId('table_id')->nullable()->constrained('restaurant_tables')->nullOnDelete();
-            $table->foreignId('cashier_id')->constrained('users')->restrictOnDelete();
+            $table->foreignId('cashier_id')->nullable()->constrained('users')->restrictOnDelete();
+            $table->foreignId('server_id')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('customer_id')->nullable()->constrained()->nullOnDelete();
             $table->decimal('subtotal', 12, 2);
             $table->decimal('discount', 12, 2)->default(0);
             $table->decimal('total', 12, 2);
-            $table->enum('status', ['OPEN', 'COMPLETED', 'CANCELLED'])->default('OPEN')->index();
+            $table->enum('status', ['OPEN', 'READY', 'BILLED', 'COMPLETED', 'CANCELLED'])->default('OPEN')->index();
             $table->text('notes')->nullable();
             $table->timestamps();
             $table->index(['created_at', 'status']);

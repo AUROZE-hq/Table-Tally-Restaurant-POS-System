@@ -60,6 +60,11 @@ class User extends Authenticatable
         return $this->role === 'CASHIER';
     }
 
+    public function isServer(): bool
+    {
+        return $this->role === 'SERVER';
+    }
+
     public function orders()
     {
         return $this->hasMany(Order::class, 'cashier_id');

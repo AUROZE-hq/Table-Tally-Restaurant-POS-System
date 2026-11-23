@@ -20,7 +20,7 @@ class AuthController extends Controller
         $credentials = $request->validate([
             'email' => ['required', 'email'],
             'password' => ['required', 'string'],
-            'role' => ['required', 'in:ADMIN,CASHIER'],
+            'role' => ['required', 'in:ADMIN,CASHIER,SERVER'],
         ]);
 
         $role = $credentials['role'];
@@ -32,7 +32,13 @@ class AuthController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended($role === 'ADMIN' ? route('dashboard') : route('pos'));
+        $home = match ($role) {
+            'ADMIN' => route('dashboard'),
+            'SERVER' => route('server.floor'),
+            default => route('pos'),
+        };
+
+        return redirect()->intended($home);
     }
 
     public function destroy(Request $request): RedirectResponse
