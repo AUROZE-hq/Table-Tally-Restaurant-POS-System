@@ -12,10 +12,21 @@ fi
 
 php artisan config:clear
 
-echo "Running migrations..."
-if ! php artisan migrate --force --no-interaction; then
-    echo "ERROR: Migrations failed. Check DB_URL (Neon pooling connection string)."
-    exit 1
+# Neon: migrations must use the direct (non-pooler) host. The pooled URL's
+# SNI is `ep-…-pooler` while PHP also sends `endpoint=ep-…`, and Neon rejects
+# that mismatch. The app keeps using DB_URL (pooled) after migrate.
+if [ -n "${DIRECT_URL:-}" ]; then
+    echo "Running migrations against DIRECT_URL..."
+    if ! DB_URL="$DIRECT_URL" php artisan migrate --force --no-interaction; then
+        echo "ERROR: Migrations failed. Check DIRECT_URL (Neon direct connection string, not the -pooler host)."
+        exit 1
+    fi
+else
+    echo "Running migrations..."
+    if ! php artisan migrate --force --no-interaction; then
+        echo "ERROR: Migrations failed. Set DIRECT_URL to the Neon direct URL, and DB_URL to the pooled URL."
+        exit 1
+    fi
 fi
 
 php artisan config:cache

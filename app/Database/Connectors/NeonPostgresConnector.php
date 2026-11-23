@@ -31,12 +31,10 @@ class NeonPostgresConnector extends PostgresConnector
             return null;
         }
 
-        if (preg_match('/^(ep-.+?)-pooler\./', $host, $matches)) {
-            return $matches[1];
-        }
-
+        // Neon requires endpoint= to match SNI, including the `-pooler` suffix
+        // when connecting through the pooled host.
         if (preg_match('/^(ep-[^.]+)\./', $host, $matches)) {
-            return str_replace('-pooler', '', $matches[1]);
+            return $matches[1];
         }
 
         return null;
