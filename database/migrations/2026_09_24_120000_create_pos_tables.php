@@ -77,7 +77,7 @@ return new class extends Migration
 
         Schema::create('stock_movements', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('inventory_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('inventory_id')->constrained('inventory')->cascadeOnDelete();
             $table->foreignId('user_id')->constrained()->restrictOnDelete();
             $table->enum('movement_type', ['STOCK_IN', 'STOCK_OUT', 'ADJUSTMENT']);
             $table->decimal('quantity', 12, 3);

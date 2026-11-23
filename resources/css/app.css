@@ -25,11 +25,28 @@ body {
 button,
 input,
 select,
-textarea {
+textarea,
+a {
     font: inherit;
+    touch-action: manipulation;
+}
+
+button,
+a {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
 }
 
 button:disabled {
     cursor: not-allowed;
     opacity: 0.55;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #d4d4d8 transparent;
 }

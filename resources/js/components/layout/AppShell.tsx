@@ -34,18 +34,18 @@ export default function AppShell({ children }: PageProps) {
         ];
 
     return (
-        <div className="min-h-screen bg-[#f5f7f8] lg:flex">
-            <aside className="flex w-full flex-col bg-[#102b2b] px-5 py-5 text-white lg:min-h-screen lg:w-64 lg:shrink-0">
-                <div className="flex items-center gap-3 border-b border-white/10 pb-5">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#d97745] shadow-lg shadow-[#d97745]/20"><ChefHat size={21} /></div>
-                    <div><p className="text-sm font-semibold tracking-wide">TABLE & TALLY</p><p className="text-xs text-white/50">Restaurant POS</p></div>
+        <div className="h-dvh overflow-hidden bg-[#f5f7f8] lg:flex">
+            <aside className="flex w-full shrink-0 flex-col bg-[#102b2b] px-3 py-2.5 text-white lg:h-dvh lg:w-[188px] lg:px-3 lg:py-3">
+                <div className="flex items-center gap-2.5 border-b border-white/10 pb-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#d97745]"><ChefHat size={16} /></div>
+                    <div className="min-w-0"><p className="truncate text-[13px] font-semibold tracking-wide">TABLE & TALLY</p><p className="text-[10px] text-white/50">Restaurant POS</p></div>
                 </div>
-                <nav className="mt-6 grid grid-cols-2 gap-1 lg:block lg:space-y-1">
-                    {navigation.map(({ label, href, icon: Icon }) => <Link key={label} href={href} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/65 transition hover:bg-white/10 hover:text-white"><Icon size={17} />{label}</Link>)}
+                <nav className="mt-2 grid grid-cols-2 gap-2 lg:mt-3 lg:block lg:space-y-1.5 lg:overflow-y-auto">
+                    {navigation.map(({ label, href, icon: Icon }) => <Link key={label} href={href} className="flex min-h-11 items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] text-white/70 transition duration-150 hover:bg-white/10 hover:text-white"><Icon size={16} className="shrink-0" /><span className="truncate">{label}</span></Link>)}
                 </nav>
-                <div className="mt-auto hidden border-t border-white/10 pt-4 lg:block"><div className="mb-3 flex items-center gap-3"><CircleUserRound size={20} className="text-[#e6a06c]" /><div><p className="text-sm">{auth.user?.name}</p><p className="text-xs text-white/45">{auth.user?.role}</p></div></div><button onClick={() => router.post('/logout')} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-white/55 hover:bg-white/10 hover:text-white"><LogOut size={17} />Sign out</button></div>
+                <div className="mt-auto hidden border-t border-white/10 pt-3 lg:block"><div className="mb-2 flex items-center gap-2"><CircleUserRound size={16} className="shrink-0 text-[#e6a06c]" /><div className="min-w-0"><p className="truncate text-xs">{auth.user?.name}</p><p className="text-[10px] text-white/45">{auth.user?.role}</p></div></div><button onClick={() => router.post('/logout')} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-white/55 transition hover:bg-white/10 hover:text-white"><LogOut size={14} />Sign out</button></div>
             </aside>
-            <main className="min-w-0 flex-1">{children}</main>
+            <main className="h-full min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
         </div>
     );
 }

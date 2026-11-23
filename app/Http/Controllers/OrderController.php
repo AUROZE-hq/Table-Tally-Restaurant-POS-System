@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Customer;
 use App\Models\Inventory;
 use App\Models\Order;
 use App\Models\Product;
@@ -29,6 +30,7 @@ class OrderController extends Controller
             'order_type' => ['required', 'in:DINE_IN,TAKEAWAY'],
             'table_id' => ['nullable', 'exists:restaurant_tables,id'],
             'customer_id' => ['nullable', 'exists:customers,id'],
+            'customer_phone' => ['nullable', 'string', 'max:30'],
             'discount' => ['nullable', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string'],
             'items' => ['required', 'array', 'min:1'],
@@ -41,6 +43,10 @@ class OrderController extends Controller
 
         if ($data['order_type'] === 'DINE_IN' && empty($data['table_id'])) {
             return response()->json(['message' => 'A table is required for dine-in orders.'], 422);
+        }
+
+        if ($data['order_type'] === 'TAKEAWAY' && empty($data['customer_id']) && empty($data['customer_phone'])) {
+            return response()->json(['message' => 'Customer phone number is required for takeaway orders.'], 422);
         }
 
         if ($request->user()->isCashier() && ! Shift::where('cashier_id', $request->user()->id)->where('status', 'OPEN')->exists()) {
@@ -71,12 +77,22 @@ class OrderController extends Controller
                 abort(422, 'That table is currently occupied.');
             }
 
+            $customerId = $data['customer_id'] ?? null;
+            if (! $customerId && ! empty($data['customer_phone'])) {
+                $phone = preg_replace('/\s+/', '', $data['customer_phone']);
+                $customer = Customer::firstOrCreate(
+                    ['phone' => $phone],
+                    ['name' => 'Takeaway '.$phone]
+                );
+                $customerId = $customer->id;
+            }
+
             $order = Order::create([
                 'order_number' => 'POS-'.now()->format('YmdHis').'-'.Str::upper(Str::random(4)),
                 'order_type' => $data['order_type'],
                 'table_id' => $data['table_id'] ?? null,
                 'cashier_id' => $request->user()->id,
-                'customer_id' => $data['customer_id'] ?? null,
+                'customer_id' => $customerId,
                 'subtotal' => $subtotal,
                 'discount' => $discount,
                 'total' => $total,
@@ -117,7 +133,7 @@ class OrderController extends Controller
             return $order;
         });
 
-        return response()->json($order->load(['items.product', 'payment', 'table', 'cashier']), 201);
+        return response()->json($order->load(['items.product', 'payment', 'table', 'cashier', 'customer']), 201);
     }
 
     public function show(Request $request, Order $order): JsonResponse
