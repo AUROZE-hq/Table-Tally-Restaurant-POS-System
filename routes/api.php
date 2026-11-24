@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\InventoryController;
@@ -35,6 +36,8 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::post('shift/{shift}/close', [ShiftController::class, 'close']);
 
     Route::middleware('role:ADMIN')->group(function () {
+        Route::get('shift-history', [ShiftController::class, 'index']);
+        Route::get('dashboard/sales-rhythm', [DashboardController::class, 'salesRhythm']);
         Route::get('inventory', [InventoryController::class, 'index']);
         Route::post('inventory/{inventory}/movement', [InventoryController::class, 'update']);
         Route::apiResource('expenses', ExpenseController::class)->except(['show']);

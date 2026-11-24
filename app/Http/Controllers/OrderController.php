@@ -22,13 +22,36 @@ class OrderController extends Controller
     {
         abort_unless($request->user()->isAdmin() || $request->user()->isCashier(), 403);
 
+        $defaultPerPage = $request->user()->isAdmin() ? 50 : 10;
+        $perPage = min(max((int) $request->input('per_page', $defaultPerPage), 1), 50);
+
         $query = Order::with(['items.product', 'items.server', 'payment', 'table', 'cashier', 'server'])->latest();
 
-        if ($request->user()->isCashier()) {
+        $scope = strtolower(trim((string) $request->input('scope', '')));
+        if ($scope === 'receipts') {
+            $query->where('status', 'COMPLETED')->whereHas('payment');
+        } elseif ($request->user()->isCashier()) {
             $query->whereIn('status', ['READY', 'BILLED', 'COMPLETED']);
         }
 
-        return response()->json($query->paginate($request->user()->isAdmin() ? 50 : 25));
+        $filter = strtolower(trim((string) $request->input('filter', 'all')));
+        if ($filter === 'paid') {
+            $query->where('status', 'COMPLETED');
+        } elseif ($filter === 'cash') {
+            $query->whereHas('payment', fn ($payment) => $payment->where('payment_method', 'CASH'));
+        } elseif ($filter === 'card') {
+            $query->whereHas('payment', fn ($payment) => $payment->where('payment_method', 'CARD'));
+        }
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($scoped) use ($search) {
+                $scoped->where('order_number', 'ilike', "%{$search}%")
+                    ->orWhereHas('table', fn ($table) => $table->where('name', 'ilike', "%{$search}%"));
+            });
+        }
+
+        return response()->json($query->paginate($perPage));
     }
 
     public function floor(): JsonResponse
@@ -431,7 +454,17 @@ class OrderController extends Controller
             ], 500);
         }
 
-        return response()->json($order->load(['items.product', 'items.server', 'payment', 'table', 'cashier', 'server']), 201);
+        $order->load([
+            'items:id,order_id,product_id,server_id,quantity,line_total',
+            'items.product:id,name',
+            'items.server:id,name',
+            'table:id,name',
+            'server:id,name',
+            'cashier:id,name',
+            'payment:id,order_id,payment_method',
+        ]);
+
+        return response()->json($order, 201);
     }
 
     /**
@@ -487,7 +520,13 @@ class OrderController extends Controller
                 $this->addLine($order, $product, $item, $request->user()->id);
             }
 
-            $this->consolidateDuplicateOpenOrders($order, $table);
+            if (Order::query()
+                ->where('table_id', $table->id)
+                ->where('status', 'OPEN')
+                ->whereKeyNot($order->id)
+                ->exists()) {
+                $this->consolidateDuplicateOpenOrders($order, $table);
+            }
 
             $order->refresh();
             $subtotal = (float) $order->items()->sum('line_total');

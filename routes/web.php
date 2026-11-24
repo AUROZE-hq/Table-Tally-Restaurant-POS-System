@@ -46,7 +46,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('/admin/{resource}', fn (string $resource) => Inertia::render('Admin/Management', [
             'resource' => $resource,
-        ]))->where('resource', 'products|categories|tables|orders|inventory|expenses|reports|users')->name('admin.resource');
+        ]))->where('resource', 'products|categories|tables|orders|inventory|expenses|reports|users|shift-history')->name('admin.resource');
     });
 
     Route::get('/', fn () => redirect()->route(match (true) {

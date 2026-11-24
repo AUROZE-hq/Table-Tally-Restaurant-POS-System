@@ -20,6 +20,7 @@ interface FloorTable {
 
 interface FloorItem {
     id: number;
+    product_id?: number;
     quantity: number;
     line_total: string | number;
     product?: { name: string };
@@ -101,7 +102,8 @@ export default function Floor({ categories, products, tables: initialTables }: P
     const [search, setSearch] = useState('');
     const [notice, setNotice] = useState('');
     const [busy, setBusy] = useState(false);
-    const [addingProductId, setAddingProductId] = useState<number | null>(null);
+    const [tapFlashProductId, setTapFlashProductId] = useState<number | null>(null);
+    const tapFlashTimer = useRef<number | null>(null);
     const [summary, setSummary] = useState<FloorOrder | null>(null);
     const [history, setHistory] = useState<FloorOrder[]>([]);
     const floorLoadToken = useRef(0);
@@ -173,6 +175,85 @@ export default function Floor({ categories, products, tables: initialTables }: P
         setOrders(prev => [...prev.filter(existing => !sameTable(existing.table_id, order.table_id)), order]);
     }
 
+    function applyOptimisticItem(product: Product) {
+        if (tableId == null) {
+            return;
+        }
+
+        const price = Number(product.price);
+        setTables(current =>
+            current.map(table => (sameTable(table.id, tableId) ? { ...table, status: 'OCCUPIED' as const } : table)),
+        );
+
+        setOrders(prev => {
+            const current = activeTableOrder(tableId, prev);
+            if (current) {
+                const items = [...(current.items ?? [])];
+                const existingIdx = items.findIndex(item => item.product_id === product.id);
+                if (existingIdx >= 0) {
+                    const line = items[existingIdx];
+                    const quantity = line.quantity + 1;
+                    items[existingIdx] = {
+                        ...line,
+                        quantity,
+                        line_total: price * quantity,
+                    };
+                } else {
+                    items.push({
+                        id: -Date.now(),
+                        product_id: product.id,
+                        quantity: 1,
+                        line_total: price,
+                        product: { name: product.name },
+                    });
+                }
+
+                const subtotal = items.reduce((sum, item) => sum + Number(item.line_total), 0);
+                const next: FloorOrder = {
+                    ...current,
+                    status: 'OPEN',
+                    items,
+                    subtotal,
+                    total: Math.max(0, subtotal - Number(current.discount)),
+                };
+
+                return [...prev.filter(order => !sameTable(order.table_id, tableId)), next];
+            }
+
+            const placeholder: FloorOrder = {
+                id: -tableId,
+                order_number: '…',
+                table_id: tableId,
+                status: 'OPEN',
+                subtotal: price,
+                discount: 0,
+                total: price,
+                items: [
+                    {
+                        id: -Date.now(),
+                        product_id: product.id,
+                        quantity: 1,
+                        line_total: price,
+                        product: { name: product.name },
+                    },
+                ],
+            };
+
+            return [...prev, placeholder];
+        });
+    }
+
+    function flashProductTap(productId: number) {
+        if (tapFlashTimer.current != null) {
+            window.clearTimeout(tapFlashTimer.current);
+        }
+        setTapFlashProductId(productId);
+        tapFlashTimer.current = window.setTimeout(() => {
+            setTapFlashProductId(null);
+            tapFlashTimer.current = null;
+        }, 280);
+    }
+
     async function loadHistory() {
         const response = await axios.get<FloorOrder[]>('/api/orders/mine');
         setHistory(response.data ?? []);
@@ -200,6 +281,9 @@ export default function Floor({ categories, products, tables: initialTables }: P
             window.clearInterval(timer);
             document.removeEventListener('visibilitychange', onVisibility);
             floorAbortRef.current?.abort();
+            if (tapFlashTimer.current != null) {
+                window.clearTimeout(tapFlashTimer.current);
+            }
         };
     }, []);
 
@@ -215,27 +299,29 @@ export default function Floor({ categories, products, tables: initialTables }: P
         setFloorStep('menu');
     }
 
-    async function addItem(product: Product) {
+    function addItem(product: Product) {
         if (!tableId) {
             setNotice('Select a table first.');
             setFloorStep('tables');
             return;
         }
-        setAddingProductId(product.id);
-        setNotice('');
-        try {
-            const response = await axios.post<FloorOrder>('/api/orders', {
+
+        applyOptimisticItem(product);
+        flashProductTap(product.id);
+        setNotice(`${product.name} added to ${selectedTableName}.`);
+
+        axios
+            .post<FloorOrder>('/api/orders', {
                 table_id: tableId,
                 items: [{ product_id: product.id, quantity: 1 }],
+            })
+            .then(response => {
+                upsertTableOrder(response.data);
+            })
+            .catch((error: any) => {
+                setNotice(error.response?.data?.message ?? 'Unable to add this item.');
+                void loadFloor();
             });
-            upsertTableOrder(response.data);
-            setNotice(`${product.name} added to ${selectedTableName}.`);
-            void loadFloor();
-        } catch (error: any) {
-            setNotice(error.response?.data?.message ?? 'Unable to add this item.');
-        } finally {
-            setAddingProductId(null);
-        }
     }
 
     async function markReady() {
@@ -288,7 +374,9 @@ export default function Floor({ categories, products, tables: initialTables }: P
     }
 
     const status = activeOrder ? orderStatus(activeOrder) : null;
-    const canAddItems = tableId != null && (status === 'OPEN' || status === 'READY');
+    const canAddItems =
+        tableId != null &&
+        (!activeOrder || status === 'OPEN' || status === 'READY');
 
     function tableTone(table: FloorTable) {
         const ticket = activeTableOrder(Number(table.id), orders);
@@ -383,20 +471,20 @@ export default function Floor({ categories, products, tables: initialTables }: P
                 <div className="min-h-0 flex-1 overflow-y-auto lg:pb-0">
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-3">
                         {filteredProducts.map(product => {
-                            const isAdding = addingProductId === product.id;
+                            const isTapFlash = tapFlashProductId === product.id;
 
                             return (
                                 <button
                                     key={product.id}
                                     type="button"
-                                    disabled={!canAddItems || isAdding}
+                                    disabled={!canAddItems}
                                     onClick={() => addItem(product)}
-                                    className={`min-h-[4.25rem] rounded-xl border border-slate-200 bg-white px-3 py-3 text-left active:scale-[0.98] disabled:opacity-50 ${isAdding ? 'ring-2 ring-[#d97745]' : ''}`}
+                                    className={`min-h-[4.25rem] rounded-xl border border-slate-200 bg-white px-3 py-3 text-left transition active:scale-[0.98] disabled:opacity-50 ${
+                                        isTapFlash ? 'ring-2 ring-[#d97745] bg-[#fff8f3]' : ''
+                                    }`}
                                 >
                                     <span className="block truncate text-sm font-semibold">{product.name}</span>
-                                    <span className="text-xs font-medium text-[#d97745]">
-                                        {isAdding ? 'Adding…' : money(Number(product.price))}
-                                    </span>
+                                    <span className="text-xs font-medium text-[#d97745]">{money(Number(product.price))}</span>
                                 </button>
                             );
                         })}
