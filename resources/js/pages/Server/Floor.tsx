@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import { Head } from '@inertiajs/react';
-import { ArrowLeft, Check, Search } from 'lucide-react';
+import { Head, Link, usePage } from '@inertiajs/react';
+import { ArrowLeft, Check, History, Search } from 'lucide-react';
 import AppShell from '../../components/layout/AppShell';
 import { FLOOR_POLL_MS } from '../../lib/floorPoll';
 import type { Category, Product } from '../../types';
@@ -49,10 +49,18 @@ const money = (value: number) => `Rs. ${value.toLocaleString('en-LK', { minimumF
 
 const statusLabel: Record<string, string> = {
     OPEN: 'Ordering',
-    READY: 'Sent to cashier',
-    BILLED: 'Billed',
+    READY: 'Closed · awaiting payment',
+    BILLED: 'Billed · awaiting payment',
     COMPLETED: 'Completed',
 };
+
+function tableAvailabilityLabel(table: FloorTable, ticket: FloorOrder | null) {
+    if (ticket && ticket.status !== 'COMPLETED') {
+        return 'Occupied';
+    }
+
+    return table.status === 'OCCUPIED' ? 'Occupied' : 'Open';
+}
 
 function sameTable(a: number | string | null | undefined, b: number | string | null | undefined) {
     return a != null && b != null && Number(a) === Number(b);
@@ -72,17 +80,19 @@ function activeTableOrder(tableId: number | null, list: FloorOrder[]) {
         return null;
     }
 
-    for (const status of ['OPEN'] as const) {
+    for (const status of ['OPEN', 'READY', 'BILLED'] as const) {
         const matches = forTable.filter(order => orderStatus(order) === status);
         if (matches.length) {
-            return [...matches].sort((a, b) => a.id - b.id)[0];
+            return [...matches].sort((a, b) => b.id - a.id)[0];
         }
     }
 
-    return forTable[0] ?? null;
+    return null;
 }
 
 export default function Floor({ categories, products, tables: initialTables }: Props) {
+    const pageUrl = usePage().url;
+    const historyView = pageUrl.includes('view=history');
     const [tables, setTables] = useState<FloorTable[]>(initialTables ?? []);
     const [orders, setOrders] = useState<FloorOrder[]>([]);
     const [floorStep, setFloorStep] = useState<FloorStep>('tables');
@@ -177,7 +187,7 @@ export default function Floor({ categories, products, tables: initialTables }: P
         };
 
         run();
-        void loadHistory().catch(() => undefined);
+        void loadHistory().catch(() => setNotice('Unable to load order history.'));
         const timer = window.setInterval(run, FLOOR_POLL_MS);
         const onVisibility = () => {
             if (!document.hidden) {
@@ -192,6 +202,12 @@ export default function Floor({ categories, products, tables: initialTables }: P
             floorAbortRef.current?.abort();
         };
     }, []);
+
+    useEffect(() => {
+        if (historyView) {
+            void loadHistory().catch(() => setNotice('Unable to load order history.'));
+        }
+    }, [historyView]);
 
     function selectTable(id: number | string) {
         setTableId(Number(id));
@@ -224,46 +240,55 @@ export default function Floor({ categories, products, tables: initialTables }: P
 
     async function markReady() {
         if (!activeOrder) return;
-        const closedId = activeOrder.id;
-        const closedTableId = tableId;
         setBusy(true);
         try {
-            const response = await axios.post<FloorOrder>(`/api/orders/${closedId}/ready`);
-            setOrders(current => current.filter(order => order.id !== closedId));
-            setTables(current => current.map(table => sameTable(table.id, closedTableId) ? { ...table, status: 'AVAILABLE' } : table));
-            setHistory(current => [response.data, ...current.filter(order => order.id !== response.data.id)]);
+            const response = await axios.post<FloorOrder>(`/api/orders/${activeOrder.id}/ready`);
+            upsertTableOrder(response.data);
+            setTables(current =>
+                current.map(table => (sameTable(table.id, tableId) ? { ...table, status: 'OCCUPIED' } : table)),
+            );
             setSummary(response.data);
-            setNotice(`${selectedTableName} is free. The closed order is in History.`);
-            setTableId(null);
-            setFloorStep('tables');
+            setNotice(`${selectedTableName} order closed. Table stays occupied until payment.`);
+            setFloorStep('ticket');
             void loadFloor();
-            void loadHistory();
         } catch (error: any) {
-            setNotice(error.response?.data?.message ?? 'Unable to close this table.');
+            setNotice(error.response?.data?.message ?? 'Unable to close this order.');
         } finally {
             setBusy(false);
         }
     }
 
-    async function markCompleted() {
+    async function markPaid() {
         if (!activeOrder) return;
         setBusy(true);
         try {
-            await axios.post(`/api/orders/${activeOrder.id}/complete`);
-            setNotice('Customer completed. This visit is saved in history.');
-            setSummary(null);
+            const response =
+                activeOrder.status === 'BILLED'
+                    ? await axios.post<FloorOrder>(`/api/orders/${activeOrder.id}/complete`)
+                    : await axios.post<FloorOrder>(`/api/orders/${activeOrder.id}/paid`, {
+                          payment: { method: 'CASH' },
+                      });
+
+            setOrders(current => current.filter(order => order.id !== activeOrder.id));
+            setTables(current =>
+                current.map(table => (sameTable(table.id, tableId) ? { ...table, status: 'AVAILABLE' } : table)),
+            );
+            setHistory(current => [response.data, ...current.filter(order => order.id !== response.data.id)]);
+            setSummary(response.data);
+            setNotice(`${selectedTableName} is paid. Table is open for the next customer.`);
             setTableId(null);
             setFloorStep('tables');
             await loadFloor();
+            void loadHistory();
         } catch (error: any) {
-            setNotice(error.response?.data?.message ?? 'The cashier still needs to create the bill.');
+            setNotice(error.response?.data?.message ?? 'Unable to mark this order as paid.');
         } finally {
             setBusy(false);
         }
     }
 
     const status = activeOrder ? orderStatus(activeOrder) : null;
-    const canAddItems = tableId != null && status !== 'BILLED';
+    const canAddItems = tableId != null && (status === 'OPEN' || status === 'READY');
 
     function tableTone(table: FloorTable) {
         const ticket = activeTableOrder(Number(table.id), orders);
@@ -294,8 +319,8 @@ export default function Floor({ categories, products, tables: initialTables }: P
                             >
                                 <span className="block text-base font-semibold">{table.name}</span>
                                 <span className="text-[11px] text-slate-500">
-                                    {ticket ? statusLabel[ticket.status] : 'Free'}
-                                    {ticket?.server ? ` · ${ticket.server.name}` : ''}
+                                    {tableAvailabilityLabel(table, ticket)}
+                                    {ticket ? ` · ${statusLabel[ticket.status] ?? ticket.status}` : ''}
                                 </span>
                             </button>
                         );
@@ -321,7 +346,12 @@ export default function Floor({ categories, products, tables: initialTables }: P
                 )}
                 {status === 'BILLED' && (
                     <div className="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                        This visit is already billed. Close it from History if you still need the summary. A new order can be started on this table.
+                        Cashier created the bill. Mark paid when the customer pays, then the table becomes open.
+                    </div>
+                )}
+                {status === 'READY' && (
+                    <div className="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                        Order is closed. You can still add dishes or mark paid when the customer settles.
                     </div>
                 )}
                 <div className="relative mb-2">
@@ -399,16 +429,16 @@ export default function Floor({ categories, products, tables: initialTables }: P
                 )}
                 <div className="space-y-2 pb-safe">
                     {activeOrder?.status === 'OPEN' && (
-                        <button type="button" disabled={busy} onClick={markReady} className="min-h-12 w-full rounded-xl bg-amber-500 text-base font-bold text-white">{busy ? 'Closing...' : 'Close table'}</button>
+                        <button type="button" disabled={busy || !activeOrder.items.length} onClick={markReady} className="min-h-12 w-full rounded-xl bg-amber-500 text-base font-bold text-white">{busy ? 'Closing...' : 'Close order'}</button>
                     )}
                     {activeOrder && (
-                        <button type="button" onClick={() => setSummary(activeOrder)} className="min-h-12 w-full rounded-xl border border-slate-200 text-base font-bold text-slate-700">Table summary</button>
+                        <button type="button" onClick={() => setSummary(activeOrder)} className="min-h-12 w-full rounded-xl border border-slate-200 text-base font-bold text-slate-700">Order summary</button>
                     )}
-                    {activeOrder?.status === 'BILLED' && (
-                        <button type="button" disabled={busy} onClick={markCompleted} className="min-h-12 w-full rounded-xl bg-emerald-600 text-base font-bold text-white">Customer completed</button>
+                    {(activeOrder?.status === 'READY' || activeOrder?.status === 'BILLED') && (
+                        <button type="button" disabled={busy} onClick={markPaid} className="min-h-12 w-full rounded-xl bg-emerald-600 text-base font-bold text-white">{busy ? 'Saving...' : 'Paid'}</button>
                     )}
                     {activeOrder?.status === 'READY' && (
-                        <p className="text-center text-xs text-slate-500">Show this summary to the cashier so they can create the bill.</p>
+                        <p className="text-center text-xs text-slate-500">Show the summary to the cashier if needed, or tap Paid when payment is collected.</p>
                     )}
                 </div>
             </aside>
@@ -418,10 +448,10 @@ export default function Floor({ categories, products, tables: initialTables }: P
     function renderHistory(extraClass = '') {
         return (
             <section className={`min-h-0 overflow-y-auto ${extraClass}`}>
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Your closed tables</p>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">All servers · order history</p>
                 {history.length === 0 && (
                     <p className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
-                        Closed tables show up here. The table is free for the next server.
+                        Orders from every server account appear here.
                     </p>
                 )}
                 <div className="space-y-2">
@@ -433,8 +463,9 @@ export default function Floor({ categories, products, tables: initialTables }: P
                             className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-left"
                         >
                             <span className="min-w-0">
-                                <span className="block truncate text-sm font-semibold">{order.table?.name ?? 'Table'}</span>
-                                <span className="text-[11px] text-slate-500">{order.order_number} · {statusLabel[order.status] ?? order.status}</span>
+                                <span className="block truncate text-sm font-semibold">{order.table?.name ?? (order.order_type === 'TAKEAWAY' ? 'Takeaway' : 'Order')}</span>
+                                <span className="block truncate text-[11px] text-slate-500">{order.order_number} · {statusLabel[order.status] ?? order.status}</span>
+                                <span className="block truncate text-[11px] text-slate-400">{order.server?.name ?? 'Server'}</span>
                             </span>
                             <span className="shrink-0 text-sm font-semibold text-[#d97745]">{money(Number(order.total))}</span>
                         </button>
@@ -465,15 +496,24 @@ export default function Floor({ categories, products, tables: initialTables }: P
                         <div className="min-w-0 flex-1">
                             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#d97745] lg:hidden">{mobileStepTitle}</p>
                             <p className="hidden text-[10px] font-semibold uppercase tracking-[0.16em] text-[#d97745] lg:block">Server</p>
-                            <h1 className="text-base font-semibold leading-tight">Table service</h1>
+                            <h1 className="text-base font-semibold leading-tight">{historyView ? 'Order history' : 'Table service'}</h1>
                         </div>
+                        <Link
+                            href={historyView ? '/server' : '/server?view=history'}
+                            className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl px-3 text-sm font-bold ${historyView ? 'bg-[#102b2b] text-white' : 'bg-[#fff4ec] text-[#b65b2e]'}`}
+                        >
+                            <History size={16} />
+                            {historyView ? 'Floor' : 'History'}
+                        </Link>
                     </header>
+                    {historyView ? (
+                        <div className="min-h-0 flex-1 overflow-hidden p-3">
+                            {renderHistory('h-full')}
+                        </div>
+                    ) : (
                     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                         <div className="hidden min-h-0 flex-1 gap-3 overflow-hidden p-3 lg:grid lg:grid-cols-[220px_minmax(0,1fr)_320px]">
-                            <div className="flex min-h-0 flex-col gap-3">
-                                {renderTables('min-h-0 flex-1')}
-                                {renderHistory('max-h-64 shrink-0')}
-                            </div>
+                            {renderTables('min-h-0')}
                             {renderMenu()}
                             {renderTicket()}
                         </div>
@@ -482,7 +522,6 @@ export default function Floor({ categories, products, tables: initialTables }: P
                             {floorStep === 'tables' && renderTables('min-h-0 flex-1')}
                             {floorStep === 'menu' && renderMenu('min-h-0 flex-1')}
                             {floorStep === 'ticket' && renderTicket('min-h-0 flex-1 border-0 shadow-none ring-0')}
-                            {floorStep === 'history' && renderHistory('min-h-0 flex-1')}
                         </div>
 
                         {floorStep === 'menu' && (
@@ -495,12 +534,12 @@ export default function Floor({ categories, products, tables: initialTables }: P
                         )}
 
                         <nav className="flex shrink-0 gap-1 border-t border-slate-200 bg-white p-2 pb-safe lg:hidden">
-                                    {(['tables', 'menu', 'ticket', 'history'] as const).map(step => (
+                                    {(['tables', 'menu', 'ticket'] as const).map(step => (
                                         <button
                                             key={step}
                                             type="button"
-                                            disabled={step !== 'tables' && step !== 'history' && !tableId}
-                                            onClick={() => (step === 'tables' || step === 'history' ? setFloorStep(step) : tableId && setFloorStep(step))}
+                                            disabled={step !== 'tables' && !tableId}
+                                            onClick={() => (step === 'tables' ? setFloorStep(step) : tableId && setFloorStep(step))}
                                             className={`min-h-11 flex-1 rounded-lg text-xs font-bold capitalize ${floorStep === step ? 'bg-[#fff4ec] text-[#b65b2e]' : 'text-slate-500'} disabled:opacity-40`}
                                         >
                                             {step}
@@ -508,25 +547,43 @@ export default function Floor({ categories, products, tables: initialTables }: P
                                     ))}
                         </nav>
                     </div>
+                    )}
                 </div>
 
                 {summary && (
                     <div className="fixed inset-0 z-40 flex items-end justify-center bg-[#102b2b]/45 p-0 sm:items-center sm:p-4" onClick={() => setSummary(null)}>
                         <div className="max-h-[85dvh] w-full overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:max-w-md sm:rounded-2xl" onClick={event => event.stopPropagation()}>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#d97745]">Table summary</p>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#d97745]">Order summary</p>
                             <h2 className="mt-1 text-xl font-semibold">{summary.table?.name ?? 'Table'} · {summary.order_number}</h2>
-                            <p className="text-sm text-slate-500">{statusLabel[summary.status]} · Server {summary.server?.name ?? '—'}</p>
-                            <div className="mt-3 space-y-1 text-sm">
+                            <p className="text-sm text-slate-500">{statusLabel[summary.status] ?? summary.status} · {summary.server?.name ?? 'Server'}</p>
+                            <div className="mt-3 space-y-2 text-sm">
                                 {summary.items.map(item => (
                                     <div key={item.id} className="flex justify-between gap-3">
-                                        <span>{item.quantity} × {item.product?.name}</span>
-                                        <span>{money(Number(item.line_total))}</span>
+                                        <span className="min-w-0">
+                                            <span className="block">{item.quantity} × {item.product?.name}</span>
+                                            {item.server?.name && (
+                                                <span className="text-[11px] text-slate-400">Added by {item.server.name}</span>
+                                            )}
+                                        </span>
+                                        <span className="shrink-0 font-medium">{money(Number(item.line_total))}</span>
                                     </div>
                                 ))}
                             </div>
-                            <div className="mt-3 flex justify-between border-t border-slate-100 pt-2 text-sm font-bold">
-                                <span>Total</span>
-                                <span>{money(Number(summary.total))}</span>
+                            <div className="mt-3 space-y-1 border-t border-slate-100 pt-2 text-sm">
+                                <div className="flex justify-between text-slate-600">
+                                    <span>Subtotal</span>
+                                    <span>{money(Number(summary.subtotal))}</span>
+                                </div>
+                                {Number(summary.discount) > 0 && (
+                                    <div className="flex justify-between text-slate-600">
+                                        <span>Discount</span>
+                                        <span>-{money(Number(summary.discount))}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between text-base font-bold text-[#102b2b]">
+                                    <span>Total</span>
+                                    <span>{money(Number(summary.total))}</span>
+                                </div>
                             </div>
                             {summary.payment && <p className="mt-1 text-xs text-slate-500">Paid by {summary.payment.payment_method}{summary.cashier ? ` · ${summary.cashier.name}` : ''}</p>}
                             <button type="button" onClick={() => setSummary(null)} className="mt-4 min-h-12 w-full rounded-xl bg-[#102b2b] text-base font-bold text-white pb-safe">Close</button>

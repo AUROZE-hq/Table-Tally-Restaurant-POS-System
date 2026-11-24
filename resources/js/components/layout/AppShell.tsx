@@ -1,5 +1,5 @@
 import { Link, router, usePage } from '@inertiajs/react';
-import { BarChart3, ChefHat, CircleUserRound, LayoutDashboard, LogOut, Package, ReceiptText, ShoppingBasket, Table2, Users, UtensilsCrossed } from 'lucide-react';
+import { BarChart3, ChefHat, CircleUserRound, History, LayoutDashboard, LogOut, Package, ReceiptText, ShoppingBasket, Table2, Users, UtensilsCrossed } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import type { User } from '../../types';
 
@@ -38,6 +38,7 @@ export default function AppShell({ children }: PageProps) {
         : isServer
         ? [
             { label: 'Floor', href: '/server', icon: UtensilsCrossed },
+            { label: 'History', href: '/server?view=history', icon: History },
         ]
         : [
             { label: 'POS', href: '/pos', icon: ShoppingBasket },

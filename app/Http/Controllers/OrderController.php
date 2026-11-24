@@ -78,16 +78,16 @@ class OrderController extends Controller
         $orders = Order::query()
             ->select(['id', 'order_number', 'order_type', 'table_id', 'status', 'subtotal', 'discount', 'total', 'server_id', 'cashier_id', 'created_at', 'updated_at'])
             ->with([
-                'items:id,order_id,product_id,quantity,line_total',
+                'items:id,order_id,product_id,server_id,quantity,line_total',
                 'items.product:id,name',
+                'items.server:id,name',
                 'table:id,name',
                 'server:id,name',
                 'payment:id,order_id,payment_method',
             ])
-            ->where('server_id', $request->user()->id)
-            ->whereIn('status', ['READY', 'BILLED', 'COMPLETED'])
+            ->whereIn('status', ['OPEN', 'READY', 'BILLED', 'COMPLETED'])
             ->latest('updated_at')
-            ->limit(40)
+            ->limit(100)
             ->get();
 
         return response()->json($orders);
@@ -210,22 +210,25 @@ class OrderController extends Controller
         abort_unless($order->status === 'OPEN', 422, 'Only an open table order can be closed.');
         abort_unless($order->items()->exists(), 422, 'Add at least one dish before closing the table.');
 
+        $subtotal = (float) $order->items()->sum('line_total');
+        $discount = (float) $order->discount;
+        $total = max(0, $subtotal - $discount);
+
         $order->update([
             'status' => 'READY',
+            'subtotal' => $subtotal,
+            'total' => $total,
             'server_id' => $request->user()->isServer() ? $request->user()->id : $order->server_id,
         ]);
 
         if ($order->table_id) {
-            $stillOpen = Order::where('table_id', $order->table_id)->where('status', 'OPEN')->exists();
-            if (! $stillOpen) {
-                RestaurantTable::whereKey($order->table_id)->update(['status' => 'AVAILABLE']);
-            }
+            RestaurantTable::whereKey($order->table_id)->update(['status' => 'OCCUPIED']);
         }
 
         ActivityLog::create([
             'user_id' => $request->user()->id,
             'action' => 'order.ready',
-            'description' => "Server closed {$order->order_number} and freed the table.",
+            'description' => "Server closed {$order->order_number}. Table stays occupied until payment.",
         ]);
 
         return response()->json($order->load(['items.product', 'items.server', 'payment', 'table', 'cashier', 'server']));
@@ -274,6 +277,10 @@ class OrderController extends Controller
                 'change_amount' => max(0, (float) ($received ?? $total) - $total),
             ]);
 
+            if ($order->table_id) {
+                RestaurantTable::whereKey($order->table_id)->update(['status' => 'OCCUPIED']);
+            }
+
             ActivityLog::create([
                 'user_id' => $request->user()->id,
                 'action' => 'order.billed',
@@ -313,7 +320,70 @@ class OrderController extends Controller
             ]);
         });
 
-        return response()->json($order->fresh()->load(['items.product', 'payment', 'table', 'cashier', 'server']));
+        return response()->json($order->fresh()->load(['items.product', 'items.server', 'payment', 'table', 'cashier', 'server']));
+    }
+
+    public function paid(Request $request, Order $order): JsonResponse
+    {
+        abort_unless($request->user()->isServer() || $request->user()->isAdmin(), 403);
+        abort_unless(in_array($order->status, ['READY', 'BILLED'], true), 422, 'Close the order before marking it paid.');
+        abort_if($order->payment()->exists(), 422, 'This order is already paid.');
+
+        $data = $request->validate([
+            'payment.method' => ['nullable', 'in:CASH,CARD,LANKAQR'],
+            'payment.received_amount' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $order = DB::transaction(function () use ($data, $request, $order) {
+            $order = Order::lockForUpdate()->findOrFail($order->id);
+            abort_unless(in_array($order->status, ['READY', 'BILLED'], true), 422, 'This order cannot be paid yet.');
+            abort_if($order->payment()->exists(), 422, 'This order is already paid.');
+
+            $subtotal = (float) $order->items()->sum('line_total');
+            $discount = min((float) $order->discount, $subtotal);
+            $total = max(0, $subtotal - $discount);
+            $method = $data['payment']['method'] ?? 'CASH';
+            $received = $data['payment']['received_amount'] ?? ($method === 'CASH' ? $total : $total);
+
+            if ($method === 'CASH' && $received < $total) {
+                abort(422, 'Cash received must be at least the order total.');
+            }
+
+            $order->update([
+                'subtotal' => $subtotal,
+                'discount' => $discount,
+                'total' => $total,
+                'status' => 'COMPLETED',
+                'server_id' => $request->user()->isServer() ? $request->user()->id : $order->server_id,
+            ]);
+
+            $order->payment()->create([
+                'payment_method' => $method,
+                'amount' => $total,
+                'received_amount' => $received,
+                'change_amount' => max(0, (float) $received - $total),
+            ]);
+
+            if ($order->table_id) {
+                $stillActive = Order::where('table_id', $order->table_id)
+                    ->whereIn('status', ['OPEN', 'READY', 'BILLED'])
+                    ->whereKeyNot($order->id)
+                    ->exists();
+                if (! $stillActive) {
+                    RestaurantTable::whereKey($order->table_id)->update(['status' => 'AVAILABLE']);
+                }
+            }
+
+            ActivityLog::create([
+                'user_id' => $request->user()->id,
+                'action' => 'order.paid',
+                'description' => "Payment recorded for {$order->order_number}.",
+            ]);
+
+            return $order;
+        });
+
+        return response()->json($order->load(['items.product', 'items.server', 'payment', 'table', 'cashier', 'server']));
     }
 
     private function placeServerOrder(Request $request): JsonResponse
@@ -370,12 +440,21 @@ class OrderController extends Controller
     private function saveServerItems(array $data, Request $request): Order
     {
         return DB::transaction(function () use ($data, $request) {
-            $table = RestaurantTable::query()->findOrFail($data['table_id']);
+            $table = RestaurantTable::query()->lockForUpdate()->findOrFail($data['table_id']);
+
+            if (Order::query()
+                ->where('table_id', $table->id)
+                ->where('status', 'BILLED')
+                ->exists()) {
+                abort(422, 'This table is waiting for payment at the cashier. Mark it paid before starting a new visit.');
+            }
 
             $order = Order::query()
                 ->where('table_id', $table->id)
-                ->where('status', 'OPEN')
+                ->whereIn('status', ['OPEN', 'READY'])
+                ->orderByRaw("CASE WHEN status = 'OPEN' THEN 0 ELSE 1 END")
                 ->orderBy('id')
+                ->lockForUpdate()
                 ->first();
 
             $productIds = collect($data['items'])->pluck('product_id')->unique();
@@ -407,6 +486,8 @@ class OrderController extends Controller
                 abort_unless($product, 422, 'One or more products are unavailable.');
                 $this->addLine($order, $product, $item, $request->user()->id);
             }
+
+            $this->consolidateDuplicateOpenOrders($order, $table);
 
             $order->refresh();
             $subtotal = (float) $order->items()->sum('line_total');
@@ -467,5 +548,19 @@ class OrderController extends Controller
     private function cashierShiftOpen(Request $request): bool
     {
         return Shift::where('cashier_id', $request->user()->id)->where('status', 'OPEN')->exists();
+    }
+
+    private function consolidateDuplicateOpenOrders(Order $order, RestaurantTable $table): void
+    {
+        Order::query()
+            ->where('table_id', $table->id)
+            ->where('status', 'OPEN')
+            ->whereKeyNot($order->id)
+            ->lockForUpdate()
+            ->get()
+            ->each(function (Order $duplicate) use ($order) {
+                $duplicate->items()->update(['order_id' => $order->id]);
+                $duplicate->delete();
+            });
     }
 }

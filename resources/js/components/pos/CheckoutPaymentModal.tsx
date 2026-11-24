@@ -1,7 +1,7 @@
 import { FormEvent } from 'react';
-import { Banknote, CreditCard, QrCode, X } from 'lucide-react';
+import { Banknote, CreditCard, X } from 'lucide-react';
 
-type PaymentMethod = 'CASH' | 'CARD' | 'LANKAQR';
+type PaymentMethod = 'CASH' | 'CARD';
 
 interface Props {
     open: boolean;
@@ -20,7 +20,6 @@ interface Props {
 const methodMeta: Record<PaymentMethod, { title: string; Icon: typeof Banknote }> = {
     CASH: { title: 'Cash payment', Icon: Banknote },
     CARD: { title: 'Card payment', Icon: CreditCard },
-    LANKAQR: { title: 'LankaQR payment', Icon: QrCode },
 };
 
 export default function CheckoutPaymentModal({
@@ -129,21 +128,6 @@ export default function CheckoutPaymentModal({
                     </div>
                 )}
 
-                {method === 'LANKAQR' && (
-                    <div className="mt-6 space-y-4">
-                        <div className="flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-6">
-                            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Scan to pay</p>
-                            <div className="flex h-40 w-40 items-center justify-center rounded-xl bg-slate-900 text-white">
-                                <QrCode size={100} strokeWidth={1.25} />
-                            </div>
-                            <p className="mt-4 text-lg font-bold text-[#d97745]">{money(total)}</p>
-                            <p className="mt-1 text-center text-xs text-slate-500">
-                                Ask the customer to scan with their bank app (LankaQR).
-                            </p>
-                        </div>
-                    </div>
-                )}
-
                 <div className="mt-6 flex gap-3">
                     <button
                         type="button"
@@ -157,13 +141,7 @@ export default function CheckoutPaymentModal({
                         disabled={busy || !cashValid}
                         className="min-h-12 flex-1 rounded-xl bg-[#d97745] text-sm font-bold text-white shadow-lg shadow-[#d97745]/20 hover:bg-[#bf6335] disabled:opacity-50"
                     >
-                        {busy
-                            ? 'Saving…'
-                            : method === 'CASH'
-                              ? 'Confirm & print'
-                              : method === 'CARD'
-                                ? 'Payment approved'
-                                : 'Payment received'}
+                        {busy ? 'Saving…' : method === 'CASH' ? 'Confirm & print' : 'Payment approved'}
                     </button>
                 </div>
             </form>

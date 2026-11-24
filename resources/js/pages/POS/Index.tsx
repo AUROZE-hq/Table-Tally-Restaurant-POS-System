@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Head, usePage } from '@inertiajs/react';
-import { Banknote, Check, ChevronDown, CreditCard, Minus, Plus, QrCode, Search, ShoppingBag, Trash2, X } from 'lucide-react';
+import { Banknote, Check, ChevronDown, CreditCard, Minus, Plus, Search, ShoppingBag, Trash2, X } from 'lucide-react';
 import AppShell from '../../components/layout/AppShell';
 import { FLOOR_POLL_MS } from '../../lib/floorPoll';
 import CheckoutPaymentModal from '../../components/pos/CheckoutPaymentModal';
@@ -31,7 +31,7 @@ export default function POS({ categories, products, tables, shift: initialShift 
     const [customerPhone, setCustomerPhone] = useState('');
     const [discountType, setDiscountType] = useState<DiscountType>('amount');
     const [discountInput, setDiscountInput] = useState('');
-    const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'LANKAQR'>('CASH');
+    const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD'>('CASH');
     const [received, setReceived] = useState('');
     const [shift, setShift] = useState<Shift | null>(initialShift ?? (auth.user?.role === 'ADMIN' ? { id: 0, opening_cash: 0, status: 'OPEN' } : null));
     const [openingCash, setOpeningCash] = useState('');
@@ -348,8 +348,8 @@ export default function POS({ categories, products, tables, shift: initialShift 
                                 </div>
                                 {discount > 0 && <p className="text-right text-[11px] text-slate-400">−{money(discount)}{discountType === 'percent' && discountInput ? ` (${discountInput}%)` : ''}</p>}
                                 <div className="flex justify-between border-t border-slate-100 pt-1.5 text-sm font-bold"><span>Total</span><span className="text-[#d97745]">{money(total)}</span></div>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {([['CASH', Banknote], ['CARD', CreditCard], ['LANKAQR', QrCode]] as const).map(([method, Icon]) => (
+                                <div className="grid grid-cols-2 gap-2">
+                                    {([['CASH', Banknote], ['CARD', CreditCard]] as const).map(([method, Icon]) => (
                                         <button key={method} onClick={() => setPaymentMethod(method)} className={`flex min-h-12 items-center justify-center gap-1 rounded-xl border text-[11px] font-bold transition ${paymentMethod === method ? 'border-[#d97745] bg-[#fff4ec] text-[#b65b2e]' : 'border-slate-200 text-slate-400 hover:bg-slate-50'}`}><Icon size={15} />{method}</button>
                                     ))}
                                 </div>

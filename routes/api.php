@@ -28,6 +28,7 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::post('orders/{order}/ready', [OrderController::class, 'ready']);
     Route::post('orders/{order}/bill', [OrderController::class, 'bill']);
     Route::post('orders/{order}/complete', [OrderController::class, 'complete']);
+    Route::post('orders/{order}/paid', [OrderController::class, 'paid']);
     Route::apiResource('orders', OrderController::class)->only(['index', 'store', 'show']);
     Route::get('shift/current', [ShiftController::class, 'current']);
     Route::post('shift', [ShiftController::class, 'store']);
