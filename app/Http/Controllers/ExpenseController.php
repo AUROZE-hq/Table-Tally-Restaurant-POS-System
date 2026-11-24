@@ -10,11 +10,44 @@ class ExpenseController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        return response()->json(Expense::query()
-            ->when($request->from, fn ($query, $from) => $query->whereDate('expense_date', '>=', $from))
-            ->when($request->to, fn ($query, $to) => $query->whereDate('expense_date', '<=', $to))
-            ->when($request->category, fn ($query, $category) => $query->where('category', $category))
-            ->latest('expense_date')->paginate(25));
+        $perPage = min(50, max(1, $request->integer('per_page', 10)));
+
+        $query = Expense::query()->with('user:id,name');
+
+        if ($from = $request->date('from')?->toDateString()) {
+            $query->whereDate('expense_date', '>=', $from);
+        }
+
+        if ($to = $request->date('to')?->toDateString()) {
+            $query->whereDate('expense_date', '<=', $to);
+        }
+
+        if ($category = trim($request->string('category')->toString())) {
+            $query->where('category', $category);
+        }
+
+        if ($search = trim($request->string('search')->toString())) {
+            $query->where(function ($nested) use ($search) {
+                $nested->where('description', 'like', '%'.$search.'%')
+                    ->orWhere('category', 'like', '%'.$search.'%');
+            });
+        }
+
+        if ($request->filled('min_amount')) {
+            $query->where('amount', '>=', (float) $request->input('min_amount'));
+        }
+
+        if ($request->filled('max_amount')) {
+            $query->where('amount', '<=', (float) $request->input('max_amount'));
+        }
+
+        $filteredTotal = (float) (clone $query)->sum('amount');
+
+        $paginator = $query->latest('expense_date')->latest('id')->paginate($perPage);
+
+        return response()->json(array_merge($paginator->toArray(), [
+            'filtered_total' => $filteredTotal,
+        ]));
     }
 
     public function store(Request $request): JsonResponse

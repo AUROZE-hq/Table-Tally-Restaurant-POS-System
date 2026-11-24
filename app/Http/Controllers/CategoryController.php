@@ -8,9 +8,22 @@ use Illuminate\Http\Request;
 
 class CategoryController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return response()->json(Category::where('is_active', true)->withCount('products')->orderBy('name')->get());
+        if ($request->user()?->isAdmin() && $request->has('page')) {
+            $perPage = min(50, max(1, $request->integer('per_page', 10)));
+            $query = Category::query()->withCount('products')->orderBy('name');
+
+            if ($search = trim($request->string('search')->toString())) {
+                $query->where('name', 'like', '%'.$search.'%');
+            }
+
+            return response()->json($query->paginate($perPage));
+        }
+
+        return response()->json(
+            Category::whereRaw('is_active IS TRUE')->withCount('products')->orderBy('name')->get(),
+        );
     }
 
     public function store(Request $request): JsonResponse

@@ -1,9 +1,10 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Head, usePage } from '@inertiajs/react';
 import { Banknote, Check, ChevronDown, CreditCard, Minus, Plus, Search, ShoppingBag, Trash2, X } from 'lucide-react';
 import AppShell from '../../components/layout/AppShell';
 import { FLOOR_POLL_MS } from '../../lib/floorPoll';
+import CashierShiftControl from '../../components/pos/CashierShiftControl';
 import CheckoutPaymentModal from '../../components/pos/CheckoutPaymentModal';
 import PosCategoryNav from '../../components/pos/PosCategoryNav';
 import type { Category, Product, RestaurantTable, Shift } from '../../types';
@@ -33,14 +34,32 @@ export default function POS({ categories, products, tables, shift: initialShift 
     const [discountInput, setDiscountInput] = useState('');
     const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD'>('CASH');
     const [received, setReceived] = useState('');
-    const [shift, setShift] = useState<Shift | null>(initialShift ?? (auth.user?.role === 'ADMIN' ? { id: 0, opening_cash: 0, status: 'OPEN' } : null));
-    const [openingCash, setOpeningCash] = useState('');
+    const isCashier = auth.user?.role === 'CASHIER';
+    const [shift, setShift] = useState<Shift | null>(
+        initialShift ?? (auth.user?.role === 'ADMIN' ? { id: 0, opening_cash: 0, status: 'OPEN' } : null),
+    );
     const [notice, setNotice] = useState('');
     const [busy, setBusy] = useState(false);
     const [checkoutOpen, setCheckoutOpen] = useState(false);
     const [floorOrders, setFloorOrders] = useState<any[]>([]);
     const [billOrder, setBillOrder] = useState<any | null>(null);
     const floorAbortRef = useRef<AbortController | null>(null);
+
+    async function refreshShift() {
+        if (!isCashier) {
+            return;
+        }
+        try {
+            const response = await axios.get<Shift | null>('/api/shift/current');
+            setShift(response.data);
+        } catch {
+            setShift(null);
+        }
+    }
+
+    useEffect(() => {
+        void refreshShift();
+    }, [isCashier]);
 
     const filteredProducts = useMemo(
         () =>
@@ -136,11 +155,6 @@ export default function POS({ categories, products, tables, shift: initialShift 
         receiptWindow.print();
     }
 
-    async function startShift(event: FormEvent) {
-        event.preventDefault();
-        try { const response = await axios.post('/api/shift', { opening_cash: Number(openingCash) }); setShift(response.data); setOpeningCash(''); setNotice('Shift opened successfully.'); } catch (error: any) { setNotice(error.response?.data?.message ?? 'Unable to open shift.'); }
-    }
-
     function openCheckout() {
         if (billOrder) {
             if (!shift) {
@@ -193,6 +207,7 @@ export default function POS({ categories, products, tables, shift: initialShift 
                 setCheckoutOpen(false);
                 setNotice(`Bill created for ${response.data.table?.name ?? 'table'}. The server can mark the customer completed.`);
                 await loadFloor();
+                void refreshShift();
                 return;
             }
             const response = await axios.post('/api/orders', {
@@ -212,6 +227,7 @@ export default function POS({ categories, products, tables, shift: initialShift 
             setCustomerPhone('');
             setCheckoutOpen(false);
             setNotice('Order completed.');
+            void refreshShift();
         } catch (error: any) {
             setNotice(error.response?.data?.message ?? 'Unable to complete order.');
         } finally {
@@ -230,13 +246,20 @@ export default function POS({ categories, products, tables, shift: initialShift 
                             <h1 className="text-base font-semibold leading-tight">Service counter</h1>
                         </div>
                         <div className="flex items-center gap-2">
-                            <div className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${shift ? 'bg-[#eff6ef] text-[#2c7150]' : 'bg-amber-50 text-amber-700'}`}>
-                                <span className={`h-1.5 w-1.5 rounded-full ${shift ? 'bg-[#47a96f]' : 'bg-amber-500'}`} />
-                                {shift ? 'Shift open' : 'Shift required'}
-                            </div>
-                            <div className="rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600">LKR <ChevronDown size={12} className="ml-0.5 inline" /></div>
+                            {isCashier ? (
+                                <CashierShiftControl shift={shift} onShiftChange={setShift} onNotice={setNotice} />
+                            ) : (
+                                <div className="rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600">
+                                    LKR <ChevronDown size={12} className="ml-0.5 inline" />
+                                </div>
+                            )}
                         </div>
                     </header>
+                    {isCashier && !shift && (
+                        <div className="shrink-0 border-b border-amber-100 bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-900">
+                            Turn <strong>Shift</strong> on and enter opening cash in the box before taking payments.
+                        </div>
+                    )}
                     <div className="grid min-h-0 flex-1 gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_340px]">
                         <section className="flex min-h-0 min-w-0 gap-3">
                             <div className="hidden min-h-0 shrink-0 lg:flex">
@@ -361,17 +384,6 @@ export default function POS({ categories, products, tables, shift: initialShift 
                     </div>
                 </div>
                 <CheckoutPaymentModal open={checkoutOpen} method={paymentMethod} total={total} money={money} received={received} onReceivedChange={setReceived} busy={busy} itemCount={billOrder ? (billOrder.items?.length ?? 0) : cart.length} orderLabel={billOrder ? (billOrder.table?.name ?? 'Table bill') : (orderType === 'DINE_IN' ? 'Dine-in' : 'Takeaway')} onClose={() => setCheckoutOpen(false)} onConfirm={finalizeCheckout} />
-                {!shift && (
-                    <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#102b2b]/45 p-4">
-                        <form onSubmit={startShift} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#d97745]">Start service</p>
-                            <h2 className="mt-1 text-xl font-semibold">Open your shift</h2>
-                            <p className="mt-1 text-sm text-slate-500">Enter the opening cash before taking the first order.</p>
-                            <input required min="0" type="number" value={openingCash} onChange={e => setOpeningCash(e.target.value)} placeholder="Opening cash · Rs." className="mt-4 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-[#d97745]" />
-                            <button className="mt-3 w-full rounded-xl bg-[#102b2b] py-2.5 text-sm font-bold text-white">Start shift</button>
-                        </form>
-                    </div>
-                )}
             </AppShell>
         </>
     );

@@ -10,10 +10,50 @@ class CustomerController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        return response()->json(Customer::query()
-            ->when($request->search, fn ($query, $search) => $query->where('name', 'like', "%{$search}%")
-                ->orWhere('phone', 'like', "%{$search}%"))
-            ->latest()->get());
+        $perPage = min(max((int) $request->input('per_page', 10), 1), 50);
+        $search = trim((string) $request->input('search', ''));
+        $filter = strtolower(trim((string) $request->input('filter', 'all')));
+
+        $query = Customer::query()
+            ->withCount('orders')
+            ->latest();
+
+        if ($search !== '') {
+            $query->where(function ($scoped) use ($search) {
+                $scoped->where('name', 'ilike', "%{$search}%")
+                    ->orWhere('phone', 'ilike', "%{$search}%")
+                    ->orWhere('address', 'ilike', "%{$search}%");
+            });
+        }
+
+        if ($filter === 'phone') {
+            $query->whereNotNull('phone')->where('phone', '!=', '');
+        } elseif ($filter === 'address') {
+            $query->whereNotNull('address')->where('address', '!=', '');
+        } elseif ($filter === 'repeat') {
+            $query->has('orders');
+        }
+
+        $paginator = $query->paginate($perPage);
+
+        $paginator->through(function (Customer $customer) {
+            $customer->setRelation(
+                'orders',
+                $customer->orders()
+                    ->select(['id', 'customer_id', 'order_number', 'order_type', 'total', 'status', 'created_at'])
+                    ->latest()
+                    ->limit(5)
+                    ->with([
+                        'items:id,order_id,product_id,quantity,line_total',
+                        'items.product:id,name',
+                    ])
+                    ->get()
+            );
+
+            return $customer;
+        });
+
+        return response()->json($paginator);
     }
 
     public function store(Request $request): JsonResponse

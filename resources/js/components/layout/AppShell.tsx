@@ -1,7 +1,8 @@
 import { Link, router, usePage } from '@inertiajs/react';
+import axios from 'axios';
 import { BarChart3, ChefHat, CircleUserRound, History, LayoutDashboard, LogOut, Package, ReceiptText, ShoppingBasket, Table2, Users, UtensilsCrossed } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
-import type { User } from '../../types';
+import { FormEvent, useState, type ReactNode } from 'react';
+import type { Shift, User } from '../../types';
 
 interface PageProps {
     children: ReactNode;
@@ -11,17 +12,58 @@ export default function AppShell({ children }: PageProps) {
     const { auth } = usePage<{ auth: { user: User } }>().props;
     const role = auth.user?.role;
     const isServer = role === 'SERVER';
+    const isCashier = role === 'CASHIER';
     const [signingOut, setSigningOut] = useState(false);
+    const [logoutShiftModal, setLogoutShiftModal] = useState(false);
+    const [openShift, setOpenShift] = useState<Shift | null>(null);
+    const [closeBusy, setCloseBusy] = useState(false);
 
-    function signOut() {
+    function completeLogout() {
+        setSigningOut(true);
+        router.post('/logout', {}, {
+            onFinish: () => {
+                setSigningOut(false);
+                setLogoutShiftModal(false);
+            },
+        });
+    }
+
+    async function signOut() {
         if (signingOut) {
             return;
         }
 
-        setSigningOut(true);
-        router.post('/logout', {}, {
-            onFinish: () => setSigningOut(false),
-        });
+        if (isCashier) {
+            try {
+                const response = await axios.get<Shift | null>('/api/shift/current');
+                if (response.data?.status === 'OPEN') {
+                    setOpenShift(response.data);
+                    setLogoutShiftModal(true);
+                    return;
+                }
+            } catch {
+                // proceed with logout if shift status cannot be read
+            }
+        }
+
+        completeLogout();
+    }
+
+    async function closeShiftAndLogout(event: FormEvent) {
+        event.preventDefault();
+        if (!openShift) {
+            completeLogout();
+            return;
+        }
+        setCloseBusy(true);
+        try {
+            await axios.post(`/api/shift/${openShift.id}/close`, {});
+            setLogoutShiftModal(false);
+            setOpenShift(null);
+            completeLogout();
+        } catch {
+            setCloseBusy(false);
+        }
     }
     const navigation = role === 'ADMIN'
         ? [
@@ -33,6 +75,7 @@ export default function AppShell({ children }: PageProps) {
             { label: 'Orders', href: '/admin/orders', icon: ReceiptText },
             { label: 'Expenses', href: '/admin/expenses', icon: ReceiptText },
             { label: 'Reports', href: '/admin/reports', icon: BarChart3 },
+            { label: 'Shift History', href: '/admin/shift-history', icon: History },
             { label: 'Users', href: '/admin/users', icon: Users },
         ]
         : isServer
@@ -92,6 +135,25 @@ export default function AppShell({ children }: PageProps) {
         <div className="h-dvh overflow-hidden bg-[#f5f7f8] lg:flex">
             {aside}
             <main className="h-full min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
+            {logoutShiftModal && openShift && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#102b2b]/45 p-4">
+                    <form onSubmit={closeShiftAndLogout} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#d97745]">Sign out</p>
+                        <h2 className="mt-1 text-xl font-semibold">Turn shift off first</h2>
+                        <p className="mt-2 text-sm text-slate-500">
+                            Your shift is still on. Close it to sign out.
+                        </p>
+                        <div className="mt-5 flex gap-2">
+                            <button type="button" onClick={() => setLogoutShiftModal(false)} className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600">
+                                Stay signed in
+                            </button>
+                            <button type="submit" disabled={closeBusy} className="flex-1 rounded-xl bg-[#102b2b] py-2.5 text-sm font-bold text-white disabled:opacity-50">
+                                {closeBusy ? 'Closing…' : 'Turn shift off & sign out'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
         </div>
     );
 }
