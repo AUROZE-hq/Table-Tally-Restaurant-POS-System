@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Head, usePage } from '@inertiajs/react';
-import { Banknote, Check, ChevronDown, CreditCard, Minus, Plus, Search, ShoppingBag, Trash2, X } from 'lucide-react';
+import { Banknote, Check, ChevronDown, CreditCard, Minus, Monitor, Plus, Search, ShoppingBag, Trash2, X } from 'lucide-react';
 import AppShell from '../../components/layout/AppShell';
 import { FLOOR_POLL_MS } from '../../lib/floorPoll';
 import CashierShiftControl from '../../components/pos/CashierShiftControl';
 import CheckoutPaymentModal from '../../components/pos/CheckoutPaymentModal';
 import PosCategoryNav from '../../components/pos/PosCategoryNav';
+import { publishCustomerDisplay, type CustomerDisplayItem } from '../../lib/customerDisplay';
 import type { Category, Product, RestaurantTable, Shift } from '../../types';
 
 interface Props {
@@ -96,6 +97,61 @@ export default function POS({ categories, products, tables, shift: initialShift 
         return Number.isFinite(paid) && paid >= total ? paid - total : 0;
     }, [paymentMethod, received, total]);
     const addToCart = (product: Product) => setCart(current => current.some(item => item.id === product.id) ? current.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item) : [...current, { ...product, quantity: 1 }]);
+
+    const displayItems = useMemo<CustomerDisplayItem[]>(() => (
+        billOrder
+            ? (billOrder.items ?? []).map((item: { product?: { name?: string }; quantity: number; line_total: number | string }) => ({
+                name: item.product?.name ?? 'Item',
+                quantity: Number(item.quantity),
+                lineTotal: Number(item.line_total),
+            }))
+            : cart.map(item => ({
+                name: item.name,
+                quantity: item.quantity,
+                lineTotal: Number(item.price) * item.quantity,
+            }))
+    ), [billOrder, cart]);
+
+    const displayLabel = useMemo(() => {
+        if (billOrder) {
+            return billOrder.table?.name ? `Table ${billOrder.table.name}` : 'Table bill';
+        }
+        if (orderType === 'DINE_IN') {
+            const tableName = tables.find(table => table.id === tableId)?.name;
+            return tableName ? `Table ${tableName}` : 'Dine in';
+        }
+        return 'Takeaway';
+    }, [billOrder, orderType, tableId, tables]);
+
+    useEffect(() => {
+        publishCustomerDisplay({
+            status: displayItems.length > 0 ? 'ordering' : 'idle',
+            label: displayItems.length > 0 ? displayLabel : 'Welcome',
+            items: displayItems,
+            subtotal,
+            discount,
+            total,
+            updatedAt: Date.now(),
+        });
+    }, [displayItems, displayLabel, subtotal, discount, total]);
+
+    function showPaidOnCustomerDisplay(paidTotal: number, label: string) {
+        publishCustomerDisplay({
+            status: 'paid',
+            label,
+            items: [],
+            subtotal: paidTotal,
+            discount: 0,
+            total: paidTotal,
+            updatedAt: Date.now(),
+        });
+    }
+
+    function openCustomerDisplay() {
+        const features = `width=900,height=700,left=${window.screen.availWidth},top=0`;
+        const popup = window.open('/customer-display', 'auroze-customer-display', features);
+        popup?.focus();
+    }
 
     async function loadFloor() {
         floorAbortRef.current?.abort();
@@ -200,6 +256,7 @@ export default function POS({ categories, products, tables, shift: initialShift 
                     payment: { method: paymentMethod, received_amount: cashReceived },
                 });
                 printReceipt(response.data);
+                showPaidOnCustomerDisplay(Number(response.data.total ?? chargeTotal), response.data.table?.name ? `Table ${response.data.table.name}` : 'Table bill');
                 setBillOrder(null);
                 setDiscountInput('');
                 setDiscountType('amount');
@@ -219,6 +276,7 @@ export default function POS({ categories, products, tables, shift: initialShift 
                 payment: { method: paymentMethod, received_amount: cashReceived },
             });
             printReceipt(response.data);
+            showPaidOnCustomerDisplay(Number(response.data.total ?? chargeTotal), orderType === 'TAKEAWAY' ? 'Takeaway' : displayLabel);
             setCart([]);
             setDiscountInput('');
             setDiscountType('amount');
@@ -246,6 +304,15 @@ export default function POS({ categories, products, tables, shift: initialShift 
                             <h1 className="text-base font-semibold leading-tight">Service counter</h1>
                         </div>
                         <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={openCustomerDisplay}
+                                className="flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-[#d97745] hover:text-[#b65b2e]"
+                                title="Open the customer-facing screen"
+                            >
+                                <Monitor size={14} />
+                                <span className="hidden sm:inline">Customer screen</span>
+                            </button>
                             {isCashier ? (
                                 <CashierShiftControl shift={shift} onShiftChange={setShift} onNotice={setNotice} />
                             ) : (

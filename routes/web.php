@@ -28,6 +28,14 @@ Route::middleware('auth')->group(function () {
         ]);
     })->name('pos');
 
+    Route::get('/customer-display', function () {
+        if (auth()->user()->isServer()) {
+            return redirect()->route('server.floor');
+        }
+
+        return Inertia::render('POS/CustomerDisplay');
+    })->name('customer-display');
+
     Route::middleware('role:SERVER')->group(function () {
         Route::get('/server', fn () => Inertia::render('Server/Floor', [
             'categories' => Category::whereRaw('is_active IS TRUE')->orderBy('name')->get(),
