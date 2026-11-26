@@ -31,7 +31,7 @@ export default function Login() {
     return (
         <>
             <Head title="Sign in" />
-            <div className="flex min-h-dvh flex-col bg-[#102b2b] text-[#102b2b] lg:grid lg:min-h-dvh lg:grid-cols-[1.05fr_0.95fr]">
+            <div className="flex min-h-dvh flex-col bg-[#102b2b] pb-8 text-[#102b2b] lg:grid lg:min-h-dvh lg:grid-cols-[1.05fr_0.95fr]">
                 <section className="hidden flex-col justify-between bg-[#102b2b] p-12 text-white lg:flex">
                     <div className="flex flex-col items-start gap-3">
                         <img src="/images/vavikarai-logo.png" alt="வழிக்கரை" className="h-40 w-40 rounded-3xl bg-white object-contain p-1" />

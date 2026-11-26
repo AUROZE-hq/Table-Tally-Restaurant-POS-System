@@ -77,7 +77,7 @@ export default function CustomerDisplay() {
     return (
         <>
             <Head title="Customer display" />
-            <div className="flex min-h-dvh flex-col bg-[#102b2b] text-white">
+            <div className="flex min-h-dvh flex-col bg-[#102b2b] pb-8 text-white">
                 <header className="flex items-center gap-3 border-b border-white/10 px-6 py-4 pt-safe">
                     <img src="/images/vavikarai-logo.png" alt="வழிக்கரை" className="h-24 w-24 rounded-2xl object-contain sm:h-28 sm:w-28" />
                     <div>

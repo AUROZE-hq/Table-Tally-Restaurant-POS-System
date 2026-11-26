@@ -95,7 +95,7 @@ export default function AppShell({ children }: PageProps) {
         ];
 
     const aside = (
-        <aside className="flex w-full shrink-0 flex-col bg-[#102b2b] px-3 py-2.5 text-white lg:h-dvh lg:w-[188px] lg:px-3 lg:py-3">
+        <aside className="flex w-full shrink-0 flex-col bg-[#102b2b] px-3 py-2.5 text-white lg:h-full lg:w-[188px] lg:px-3 lg:py-3">
             <div className="flex items-center gap-2.5 border-b border-white/10 pb-2.5">
                 <img src="/images/vavikarai-logo.png" alt="வழிக்கரை" className="h-16 w-16 shrink-0 rounded-xl object-contain" />
                 <div className="min-w-0"><p className="truncate text-[13px] font-semibold tracking-wide">VAVIKKARAI</p><p className="text-[10px] text-white/50">Aaniver · Batticaloa</p></div>
@@ -109,7 +109,7 @@ export default function AppShell({ children }: PageProps) {
 
     if (isServer) {
         return (
-            <div className="flex h-dvh flex-col overflow-hidden bg-[#f5f7f8]">
+            <div className="flex h-dvh flex-col overflow-hidden bg-[#f5f7f8] pb-8">
                 <header className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-[#102b2b] px-3 py-2.5 text-white pt-safe lg:hidden">
                     <div className="flex min-w-0 items-center gap-2">
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#d97745]"><UtensilsCrossed size={18} /></div>
@@ -132,7 +132,7 @@ export default function AppShell({ children }: PageProps) {
     }
 
     return (
-        <div className="h-dvh overflow-hidden bg-[#f5f7f8] lg:flex">
+        <div className="h-dvh overflow-hidden bg-[#f5f7f8] pb-8 lg:flex">
             {aside}
             <main className="h-full min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
             {logoutShiftModal && openShift && (
