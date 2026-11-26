@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { Head, Link, usePage } from '@inertiajs/react';
 import { ArrowLeft, Check, History, Search } from 'lucide-react';
 import AppShell from '../../components/layout/AppShell';
+import MenuCatalog from '../../components/pos/MenuCatalog';
 import { FLOOR_POLL_MS } from '../../lib/floorPoll';
+import { canOrderProduct } from '../../lib/menuPrice';
 import type { Category, Product } from '../../types';
 
 interface Props {
@@ -23,6 +25,7 @@ interface FloorItem {
     product_id?: number;
     quantity: number;
     line_total: string | number;
+    product_name?: string | null;
     product?: { name: string };
     server?: { name: string } | null;
 }
@@ -112,16 +115,6 @@ export default function Floor({ categories, products, tables: initialTables }: P
     const activeOrder = activeTableOrder(tableId, orders);
     const selectedTableName =
         tables.find(table => sameTable(table.id, tableId))?.name ?? (tableId != null ? `Table #${tableId}` : 'Select a table');
-
-    const filteredProducts = useMemo(
-        () =>
-            products.filter(
-                product =>
-                    (activeCategory == null || Number(product.category_id) === Number(activeCategory)) &&
-                    product.name.toLowerCase().includes(search.toLowerCase()),
-            ),
-        [products, activeCategory, search],
-    );
 
     function applyFloorOrders(nextOrders: FloorOrder[]) {
         setOrders(prev => {
@@ -300,6 +293,10 @@ export default function Floor({ categories, products, tables: initialTables }: P
     }
 
     function addItem(product: Product) {
+        if (!canOrderProduct(product)) {
+            setNotice(product.price_label || 'Price to be confirmed.');
+            return;
+        }
         if (!tableId) {
             setNotice('Select a table first.');
             setFloorStep('tables');
@@ -462,33 +459,23 @@ export default function Floor({ categories, products, tables: initialTables }: P
                         <p className="font-semibold text-slate-800">Already on {selectedTableName}</p>
                         {activeOrder.items.map(item => (
                             <p key={item.id} className="flex justify-between gap-2">
-                                <span>{item.quantity} × {item.product?.name}</span>
+                                <span>{item.quantity} × {item.product?.name ?? item.product_name}</span>
                                 <span>{item.server?.name ?? ''}</span>
                             </p>
                         ))}
                     </div>
                 )}
                 <div className="min-h-0 flex-1 overflow-y-auto lg:pb-0">
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-3">
-                        {filteredProducts.map(product => {
-                            const isTapFlash = tapFlashProductId === product.id;
-
-                            return (
-                                <button
-                                    key={product.id}
-                                    type="button"
-                                    disabled={!canAddItems}
-                                    onClick={() => addItem(product)}
-                                    className={`min-h-[4.25rem] rounded-xl border border-slate-200 bg-white px-3 py-3 text-left transition active:scale-[0.98] disabled:opacity-50 ${
-                                        isTapFlash ? 'ring-2 ring-[#d97745] bg-[#fff8f3]' : ''
-                                    }`}
-                                >
-                                    <span className="block truncate text-sm font-semibold">{product.name}</span>
-                                    <span className="text-xs font-medium text-[#d97745]">{money(Number(product.price))}</span>
-                                </button>
-                            );
-                        })}
-                    </div>
+                    <MenuCatalog
+                        categories={categories}
+                        products={products}
+                        activeCategory={activeCategory}
+                        search={search}
+                        canAdd={canAddItems}
+                        flashingId={tapFlashProductId}
+                        onAdd={addItem}
+                        onBlocked={setNotice}
+                    />
                 </div>
             </section>
         );
@@ -502,7 +489,7 @@ export default function Floor({ categories, products, tables: initialTables }: P
                     {activeOrder ? activeOrder.items.map(item => (
                         <div key={item.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-3">
                             <span className="min-w-0">
-                                <span className="block truncate text-sm font-semibold">{item.quantity} × {item.product?.name}</span>
+                                <span className="block truncate text-sm font-semibold">{item.quantity} × {item.product?.name ?? item.product_name}</span>
                                 <span className="text-[11px] text-slate-400">{item.server?.name ?? activeOrder.server?.name ?? 'Server'}</span>
                             </span>
                             <span className="text-sm font-semibold">{money(Number(item.line_total))}</span>
@@ -648,7 +635,7 @@ export default function Floor({ categories, products, tables: initialTables }: P
                                 {summary.items.map(item => (
                                     <div key={item.id} className="flex justify-between gap-3">
                                         <span className="min-w-0">
-                                            <span className="block">{item.quantity} × {item.product?.name}</span>
+                                            <span className="block">{item.quantity} × {item.product?.name ?? item.product_name}</span>
                                             {item.server?.name && (
                                                 <span className="text-[11px] text-slate-400">Added by {item.server.name}</span>
                                             )}

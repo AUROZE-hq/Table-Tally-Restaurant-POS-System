@@ -21,8 +21,8 @@ Route::middleware('auth')->group(function () {
         }
 
         return Inertia::render('POS/Index', [
-            'categories' => Category::whereRaw('is_active IS TRUE')->orderBy('name')->get(),
-            'products' => Product::with('category')->whereRaw('is_available IS TRUE')->orderBy('name')->get(),
+            'categories' => Category::menuSections(),
+            'products' => Product::menuItems(),
             'tables' => RestaurantTable::whereRaw('is_active IS TRUE')->orderBy('name')->get(),
             'shift' => fn () => auth()->user()->shifts()->where('status', 'OPEN')->latest()->first(),
         ]);
@@ -38,8 +38,8 @@ Route::middleware('auth')->group(function () {
 
     Route::middleware('role:SERVER')->group(function () {
         Route::get('/server', fn () => Inertia::render('Server/Floor', [
-            'categories' => Category::whereRaw('is_active IS TRUE')->orderBy('name')->get(),
-            'products' => Product::with('category')->whereRaw('is_available IS TRUE')->orderBy('name')->get(),
+            'categories' => Category::menuSections(),
+            'products' => Product::menuItems(),
             'tables' => RestaurantTable::whereRaw('is_active IS TRUE')->orderBy('name')->get(),
         ]))->name('server.floor');
     });

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { Head } from '@inertiajs/react';
-import { ChefHat } from 'lucide-react';
 import {
     CUSTOMER_DISPLAY_CHANNEL,
     CUSTOMER_DISPLAY_STORAGE_KEY,
@@ -80,11 +79,9 @@ export default function CustomerDisplay() {
             <Head title="Customer display" />
             <div className="flex min-h-dvh flex-col bg-[#102b2b] text-white">
                 <header className="flex items-center gap-3 border-b border-white/10 px-6 py-4 pt-safe">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#d97745]">
-                        <ChefHat size={22} />
-                    </div>
+                    <img src="/images/vavikarai-logo.png" alt="வழிக்கரை" className="h-24 w-24 rounded-2xl object-contain sm:h-28 sm:w-28" />
                     <div>
-                        <p className="text-sm font-semibold tracking-[0.18em]">AUROZE POS</p>
+                        <p className="text-sm font-semibold tracking-[0.18em]">VAVIKKARAI</p>
                         <p className="text-xs text-white/55">{showingThanks ? 'Payment received' : bill.label || 'Welcome'}</p>
                     </div>
                 </header>

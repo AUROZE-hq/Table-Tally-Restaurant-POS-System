@@ -11,12 +11,12 @@ class Product extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'category_id', 'name', 'description', 'price', 'image', 'is_available',
+        'category_id', 'name', 'description', 'price', 'price_label', 'image', 'is_available', 'is_orderable', 'sort_order',
     ];
 
     protected function casts(): array
     {
-        return ['price' => 'decimal:2', 'is_available' => 'boolean'];
+        return ['price' => 'decimal:2', 'is_available' => 'boolean', 'is_orderable' => 'boolean'];
     }
 
     public function category()
@@ -32,5 +32,23 @@ class Product extends Model
     public function orderItems()
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    public static function menuItems()
+    {
+        return static::query()
+            ->with(['category.parent'])
+            ->whereRaw('is_available IS TRUE')
+            ->orderBy('sort_order')
+            ->get();
+    }
+
+    public function sellablePrice(): ?float
+    {
+        if (! $this->is_orderable || $this->price === null) {
+            return null;
+        }
+
+        return (float) $this->price;
     }
 }

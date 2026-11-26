@@ -1,8 +1,10 @@
 import { FormEvent, useCallback, useEffect, useState, type ReactNode } from 'react';
 import axios from 'axios';
 import { Head } from '@inertiajs/react';
-import { AlertTriangle, CheckCircle2, Download, Package, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Download, Package, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import AppShell from '../../components/layout/AppShell';
+import { FeedbackProvider, useFeedback } from '../../components/ui/Feedback';
+import { menuPriceText } from '../../lib/menuPrice';
 
 type Resource = 'products' | 'categories' | 'tables' | 'orders' | 'inventory' | 'expenses' | 'reports' | 'users' | 'shift-history';
 interface Props { resource: Resource }
@@ -11,19 +13,27 @@ const titles: Record<Resource, string> = { products: 'Products', categories: 'Ca
 const units = ['kg', 'g', 'L', 'ml', 'pcs'];
 const money = (value: number) => `Rs. ${Number(value || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}`;
 
-export default function Management({ resource }: Props) {
+export default function Management(props: Props) {
+    return (
+        <FeedbackProvider>
+            <ManagementScreen {...props} />
+        </FeedbackProvider>
+    );
+}
+
+function ManagementScreen({ resource }: Props) {
+    const { notify, confirm } = useFeedback();
     const [rows, setRows] = useState<any[]>([]);
     const [report, setReport] = useState<any>(null);
     const [name, setName] = useState('');
     const [search, setSearch] = useState('');
-    const [notice, setNotice] = useState('');
     const [period, setPeriod] = useState('month');
     const [from, setFrom] = useState('');
     const [to, setTo] = useState('');
     const load = () => axios.get(`/api/${resource}`, { params: resource === 'reports' ? { period, from, to } : {} }).then(response => {
         if (resource === 'reports') setReport(response.data);
         else setRows(response.data.data ?? response.data);
-    }).catch(() => setNotice('Unable to load this section.'));
+    }).catch(() => notify('Unable to load this section.', 'error'));
 
     useEffect(() => {
         if (resource === 'shift-history' || resource === 'categories' || resource === 'products' || resource === 'expenses') {
@@ -39,15 +49,15 @@ export default function Management({ resource }: Props) {
         try {
             await axios.post(`/api/${resource}`, payload);
             setName('');
-            setNotice(`${titles[resource]} updated.`);
+            notify(`${titles[resource]} updated.`);
             load();
         } catch (error: any) {
-            setNotice(error.response?.data?.message ?? 'Unable to save.');
+            notify(error.response?.data?.message ?? 'Unable to save.', 'error');
         }
     }
 
     async function remove(id: number) {
-        if (!confirm('Delete this item?')) return;
+        if (!(await confirm('Delete this item?'))) return;
         await axios.delete(`/api/${resource}/${id}`);
         load();
     }
@@ -71,23 +81,22 @@ export default function Management({ resource }: Props) {
                             <button className="flex items-center gap-2 rounded-xl bg-[#d97745] px-4 py-3 text-sm font-semibold text-white"><Plus size={17} />Add</button>
                         </form>}
                     </div>
-                    {notice && <div className="flex items-center gap-2 rounded-xl bg-[#fff4ec] p-3 text-sm text-[#a85329]"><CheckCircle2 size={17} />{notice}</div>}
                     {resource === 'users' ? (
-                        <UsersPanel rows={rows} search={search} onRefresh={load} onNotice={setNotice} />
+                        <UsersPanel rows={rows} search={search} onRefresh={load} onNotice={notify} />
                     ) : resource === 'categories' ? (
-                        <CategoriesPanel search={search} onNotice={setNotice} />
+                        <CategoriesPanel search={search} onNotice={notify} />
                     ) : resource === 'products' ? (
-                        <ProductsPanel search={search} onNotice={setNotice} />
+                        <ProductsPanel search={search} onNotice={notify} />
                     ) : resource === 'inventory' ? (
-                        <InventoryTable rows={rows as InventoryRow[]} search={search} onUpdated={load} onNotice={setNotice} />
+                        <InventoryTable rows={rows as InventoryRow[]} search={search} onUpdated={load} onNotice={notify} />
                     ) : resource === 'reports' && report ? (
                         <ReportTable report={report} period={period} from={from} to={to} onPeriodChange={setPeriod} onFromChange={setFrom} onToChange={setTo} onApply={load} />
                     ) : resource === 'expenses' ? (
-                        <ExpensesPanel search={search} onNotice={setNotice} />
+                        <ExpensesPanel search={search} onNotice={notify} />
                     ) : resource === 'orders' ? (
                         <OrdersLogTable rows={rows} search={search} />
                     ) : resource === 'shift-history' ? (
-                        <ShiftHistoryPanel search={search} onNotice={setNotice} />
+                        <ShiftHistoryPanel search={search} onNotice={notify} />
                     ) : (
                         <DataTable resource={resource} rows={rows} search={search} onRemove={remove} />
                     )}
@@ -159,6 +168,7 @@ interface ExpenseRow {
 }
 
 function ExpensesPanel({ search, onNotice }: { search: string; onNotice: (message: string) => void }) {
+    const { confirm } = useFeedback();
     const [rows, setRows] = useState<ExpenseRow[]>([]);
     const [page, setPage] = useState(1);
     const [from, setFrom] = useState(startOfMonthIso);
@@ -257,7 +267,7 @@ function ExpensesPanel({ search, onNotice }: { search: string; onNotice: (messag
     }
 
     async function removeExpense(expense: ExpenseRow) {
-        if (!confirm(`Delete expense "${expense.category}" (${money(Number(expense.amount))})?`)) {
+        if (!(await confirm(`Delete expense "${expense.category}" (${money(Number(expense.amount))})?`))) {
             return;
         }
         try {
@@ -554,7 +564,10 @@ type UserRow = { id: number; name: string; email: string; role: 'ADMIN' | 'CASHI
 
 function apiErrorMessage(error: any, fallback: string) {
     const data = error?.response?.data;
-    if (data?.message) return data.message;
+    if (typeof data?.message === 'string' && /SQLSTATE|duplicate key/i.test(data.message)) {
+        return /unique|already exists/i.test(data.message) ? 'That name is already in use.' : fallback;
+    }
+    if (data?.message && !/SQLSTATE/i.test(data.message)) return data.message;
     const errors = data?.errors;
     if (errors && typeof errors === 'object') {
         const first = Object.values(errors)[0];
@@ -566,8 +579,12 @@ function apiErrorMessage(error: any, fallback: string) {
 interface CategoryRow {
     id: number;
     name: string;
+    description?: string | null;
     is_active: boolean;
+    parent_id?: number | null;
     products_count?: number;
+    children_count?: number;
+    parent?: { id: number; name: string } | null;
 }
 
 interface PaginatedMeta {
@@ -629,6 +646,7 @@ function PaginationBar({ meta, page, onPageChange, entityLabel = 'records' }: { 
 }
 
 function CategoriesPanel({ search, onNotice }: { search: string; onNotice: (message: string) => void }) {
+    const { confirm } = useFeedback();
     const [rows, setRows] = useState<CategoryRow[]>([]);
     const [page, setPage] = useState(1);
     const [meta, setMeta] = useState<PaginatedMeta>({
@@ -640,12 +658,13 @@ function CategoriesPanel({ search, onNotice }: { search: string; onNotice: (mess
         to: null,
     });
     const [editing, setEditing] = useState<CategoryRow | null>(null);
+    const [presetParentId, setPresetParentId] = useState('');
     const [loading, setLoading] = useState(true);
 
     const load = useCallback(() => {
         setLoading(true);
         return axios
-            .get('/api/categories', { params: { page, per_page: 10, search: search.trim() || undefined } })
+            .get('/api/categories', { params: { page, per_page: 50 } })
             .then(response => {
                 setRows(response.data.data ?? []);
                 setMeta({
@@ -659,22 +678,30 @@ function CategoriesPanel({ search, onNotice }: { search: string; onNotice: (mess
             })
             .catch(() => onNotice('Unable to load categories.'))
             .finally(() => setLoading(false));
-    }, [page, search, onNotice]);
-
-    useEffect(() => {
-        setPage(1);
-    }, [search]);
+    }, [page, onNotice]);
 
     useEffect(() => {
         void load();
     }, [load]);
 
+    const query = search.trim().toLowerCase();
+    const visible = rows.filter(category => {
+        const label = `${category.parent?.name ?? ''} ${category.name} ${category.description ?? ''}`.toLowerCase();
+        return query === '' || label.includes(query);
+    });
+
     async function removeCategory(category: CategoryRow) {
-        const extra =
-            category.products_count && category.products_count > 0
-                ? ` This category has ${category.products_count} product(s). Deleting may affect the menu.`
-                : '';
-        if (!confirm(`Delete "${category.name}"?${extra}`)) {
+        const subs = category.children_count ?? 0;
+        const childDishes = rows
+            .filter(row => row.parent_id === category.id)
+            .reduce((sum, row) => sum + (row.products_count ?? 0), 0);
+        const dishes = (category.products_count ?? 0) + childDishes;
+        const extra = [
+            subs > 0 ? `${subs} sub-categor${subs === 1 ? 'y' : 'ies'}` : '',
+            dishes > 0 ? `${dishes} dish${dishes === 1 ? '' : 'es'}` : '',
+        ].filter(Boolean).join(' and ');
+        const warning = extra ? ` This also removes ${extra} from the menu.` : '';
+        if (!(await confirm(`Delete "${category.name}"?${warning}`))) {
             return;
         }
         try {
@@ -703,6 +730,9 @@ function CategoriesPanel({ search, onNotice }: { search: string; onNotice: (mess
     return (
         <div className="space-y-5">
             <CategoryForm
+                parents={rows.filter(category => !category.parent_id)}
+                parentId={presetParentId}
+                onParentChange={setPresetParentId}
                 onCreated={async () => {
                     onNotice('Category created.');
                     setPage(1);
@@ -716,23 +746,24 @@ function CategoriesPanel({ search, onNotice }: { search: string; onNotice: (mess
                         <thead className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wider text-slate-400">
                             <tr>
                                 <th className="px-5 py-4">Name</th>
+                                <th className="px-5 py-4">Type</th>
                                 <th className="px-5 py-4">Products</th>
                                 <th className="px-5 py-4">Status</th>
                                 <th className="px-5 py-4 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {loading && (
+                            {loading && rows.length === 0 && (
                                 <tr>
-                                    <td colSpan={4} className="px-5 py-14 text-center text-slate-400">
+                                    <td colSpan={5} className="px-5 py-14 text-center text-slate-400">
                                         Loading…
                                     </td>
                                 </tr>
                             )}
-                            {!loading &&
-                                rows.map(category => (
+                            {visible.map(category => (
                                     <tr key={category.id} className="hover:bg-slate-50">
-                                        <td className="px-5 py-4 font-semibold">{category.name}</td>
+                                        <td className="px-5 py-4 font-semibold">{category.parent?.name ? `${category.parent.name} / ${category.name}` : category.name}</td>
+                                        <td className="px-5 py-4 text-slate-600">{category.parent_id ? 'Sub-category' : 'Main category'}</td>
                                         <td className="px-5 py-4 text-slate-600">{category.products_count ?? 0}</td>
                                         <td className="px-5 py-4">
                                             <button
@@ -745,6 +776,18 @@ function CategoriesPanel({ search, onNotice }: { search: string; onNotice: (mess
                                         </td>
                                         <td className="px-5 py-4">
                                             <div className="flex justify-end gap-1">
+                                                {!category.parent_id && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setPresetParentId(String(category.id));
+                                                            document.getElementById('category-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                                        }}
+                                                        className="rounded-lg px-2 py-1 text-xs font-semibold text-[#b65b2e] hover:bg-[#fff4ec]"
+                                                    >
+                                                        Add sub
+                                                    </button>
+                                                )}
                                                 <button
                                                     type="button"
                                                     onClick={() => setEditing(category)}
@@ -765,9 +808,9 @@ function CategoriesPanel({ search, onNotice }: { search: string; onNotice: (mess
                                         </td>
                                     </tr>
                                 ))}
-                            {!loading && rows.length === 0 && (
+                            {!loading && visible.length === 0 && (
                                 <tr>
-                                    <td colSpan={4} className="px-5 py-14 text-center text-slate-400">
+                                    <td colSpan={5} className="px-5 py-14 text-center text-slate-400">
                                         No categories found.
                                     </td>
                                 </tr>
@@ -780,6 +823,7 @@ function CategoriesPanel({ search, onNotice }: { search: string; onNotice: (mess
             {editing && (
                 <CategoryEditModal
                     category={editing}
+                    parents={rows.filter(category => !category.parent_id && category.id !== editing.id)}
                     onClose={() => setEditing(null)}
                     onSaved={async () => {
                         onNotice('Category updated.');
@@ -793,8 +837,21 @@ function CategoriesPanel({ search, onNotice }: { search: string; onNotice: (mess
     );
 }
 
-function CategoryForm({ onCreated, onError }: { onCreated: () => void; onError: (message: string) => void }) {
+function CategoryForm({
+    parents,
+    parentId,
+    onParentChange,
+    onCreated,
+    onError,
+}: {
+    parents: CategoryRow[];
+    parentId: string;
+    onParentChange: (value: string) => void;
+    onCreated: () => void;
+    onError: (message: string) => void;
+}) {
     const [name, setName] = useState('');
+    const [description, setDescription] = useState('');
     const [busy, setBusy] = useState(false);
 
     async function submit(event: FormEvent) {
@@ -804,8 +861,15 @@ function CategoryForm({ onCreated, onError }: { onCreated: () => void; onError: 
         }
         setBusy(true);
         try {
-            await axios.post('/api/categories', { name: name.trim(), is_active: true });
+            await axios.post('/api/categories', {
+                name: name.trim(),
+                description: description.trim() || null,
+                parent_id: parentId ? Number(parentId) : null,
+                is_active: true,
+            });
             setName('');
+            onParentChange('');
+            setDescription('');
             onCreated();
         } catch (error: any) {
             onError(apiErrorMessage(error, 'Unable to create category.'));
@@ -815,49 +879,77 @@ function CategoryForm({ onCreated, onError }: { onCreated: () => void; onError: 
     }
 
     return (
-        <form onSubmit={submit} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
+        <form id="category-form" onSubmit={submit} className="scroll-mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
             <div className="mb-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#d97745]">Menu categories</p>
                 <h2 className="mt-1 text-lg font-semibold">Add a category</h2>
-                <p className="mt-1 text-sm text-slate-500">Categories group items on the server and cashier menus.</p>
+                <p className="mt-1 text-sm text-slate-500">Leave the parent as “Main category”, or choose one to add a sub-category such as Idly under Breakfast.</p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid gap-2 lg:grid-cols-[minmax(0,1.2fr)_minmax(14rem,0.8fr)_auto]">
                 <input
                     required
                     value={name}
                     onChange={event => setName(event.target.value)}
                     placeholder="Category name"
-                    className="min-w-[12rem] flex-1 rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none focus:border-[#d97745]"
+                    className="rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none focus:border-[#d97745]"
                 />
-                <button disabled={busy} className="flex items-center gap-2 rounded-xl bg-[#d97745] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
+                <select
+                    value={parentId}
+                    onChange={event => onParentChange(event.target.value)}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-[#d97745]"
+                >
+                    <option value="">Main category</option>
+                    {parents.map(parent => (
+                        <option key={parent.id} value={parent.id}>
+                            Under {parent.name}
+                        </option>
+                    ))}
+                </select>
+                <button disabled={busy} className="flex items-center justify-center gap-2 rounded-xl bg-[#d97745] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
                     <Plus size={17} />
-                    {busy ? 'Saving…' : 'Add category'}
+                    {busy ? 'Saving…' : parentId ? 'Add sub-category' : 'Add category'}
                 </button>
             </div>
+            <input
+                value={description}
+                onChange={event => setDescription(event.target.value)}
+                placeholder="Note shown under this section (optional)"
+                className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none focus:border-[#d97745]"
+            />
         </form>
     );
 }
 
 function CategoryEditModal({
     category,
+    parents,
     onClose,
     onSaved,
     onError,
 }: {
     category: CategoryRow;
+    parents: CategoryRow[];
     onClose: () => void;
     onSaved: () => void;
     onError: (message: string) => void;
 }) {
     const [name, setName] = useState(category.name);
+    const [parentId, setParentId] = useState(category.parent_id ? String(category.parent_id) : '');
+    const [description, setDescription] = useState(category.description ?? '');
     const [isActive, setIsActive] = useState(category.is_active);
     const [busy, setBusy] = useState(false);
+    const lockedAsMain = (category.children_count ?? 0) > 0;
 
     async function submit(event: FormEvent) {
         event.preventDefault();
         setBusy(true);
         try {
-            await axios.put(`/api/categories/${category.id}`, { name: name.trim(), is_active: isActive });
+            await axios.put(`/api/categories/${category.id}`, {
+                name: name.trim(),
+                description: description.trim() || null,
+                parent_id: lockedAsMain ? null : parentId ? Number(parentId) : null,
+                is_active: isActive,
+            });
             onSaved();
         } catch (error: any) {
             onError(apiErrorMessage(error, 'Unable to update category.'));
@@ -889,6 +981,28 @@ function CategoryEditModal({
                         onChange={event => setName(event.target.value)}
                         className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none focus:border-[#d97745]"
                     />
+                    <select
+                        value={lockedAsMain ? '' : parentId}
+                        disabled={lockedAsMain}
+                        onChange={event => setParentId(event.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-[#d97745] disabled:bg-slate-50"
+                    >
+                        <option value="">Main category</option>
+                        {parents.map(parent => (
+                            <option key={parent.id} value={parent.id}>
+                                Sub-category under {parent.name}
+                            </option>
+                        ))}
+                    </select>
+                    {lockedAsMain && (
+                        <p className="text-xs text-slate-500">This main category has sub-categories, so it cannot be moved under another category.</p>
+                    )}
+                    <input
+                        value={description}
+                        onChange={event => setDescription(event.target.value)}
+                        placeholder="Note shown under this section (optional)"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none focus:border-[#d97745]"
+                    />
                     <label className="flex items-center gap-2 text-sm text-slate-600">
                         <input
                             type="checkbox"
@@ -915,14 +1029,17 @@ function CategoryEditModal({
 interface ProductRow {
     id: number;
     name: string;
-    price: string | number;
+    price: string | number | null;
+    price_label?: string | null;
     description?: string | null;
     is_available: boolean;
+    is_orderable?: boolean;
     category_id: number;
-    category?: { id: number; name: string } | null;
+    category?: { id: number; name: string; parent?: { id: number; name: string } | null } | null;
 }
 
 function ProductsPanel({ search, onNotice }: { search: string; onNotice: (message: string) => void }) {
+    const { confirm } = useFeedback();
     const [rows, setRows] = useState<ProductRow[]>([]);
     const [categories, setCategories] = useState<CategoryRow[]>([]);
     const [page, setPage] = useState(1);
@@ -972,7 +1089,7 @@ function ProductsPanel({ search, onNotice }: { search: string; onNotice: (messag
     }, [load]);
 
     async function removeProduct(product: ProductRow) {
-        if (!confirm(`Delete "${product.name}"? This cannot be undone if the item was never sold.`)) {
+        if (!(await confirm(`Delete "${product.name}"? This cannot be undone if the item was never sold.`))) {
             return;
         }
         try {
@@ -1038,8 +1155,8 @@ function ProductsPanel({ search, onNotice }: { search: string; onNotice: (messag
                                                 {product.name}
                                             </div>
                                         </td>
-                                        <td className="px-5 py-4 text-slate-600">{product.category?.name ?? '—'}</td>
-                                        <td className="px-5 py-4 font-medium text-[#c26435]">{money(Number(product.price))}</td>
+                                        <td className="px-5 py-4 text-slate-600">{product.category?.parent?.name ? `${product.category.parent.name} / ${product.category.name}` : product.category?.name ?? '—'}</td>
+                                        <td className="px-5 py-4 font-medium text-[#c26435]">{menuPriceText(product)}</td>
                                         <td className="px-5 py-4">
                                             <button
                                                 type="button"
@@ -1172,7 +1289,7 @@ function ProductForm({
                     </option>
                     {categories.map(category => (
                         <option key={category.id} value={category.id}>
-                            {category.name}
+                            {category.parent?.name ? `${category.parent.name} / ${category.name}` : category.name}
                         </option>
                     ))}
                 </select>
@@ -1222,7 +1339,7 @@ function ProductEditModal({
 }) {
     const [name, setName] = useState(product.name);
     const [categoryId, setCategoryId] = useState(String(product.category_id));
-    const [price, setPrice] = useState(String(product.price));
+    const [price, setPrice] = useState(product.price == null ? '' : String(product.price));
     const [description, setDescription] = useState(product.description ?? '');
     const [isAvailable, setIsAvailable] = useState(product.is_available);
     const [busy, setBusy] = useState(false);
@@ -1234,7 +1351,9 @@ function ProductEditModal({
             await axios.put(`/api/products/${product.id}`, {
                 name: name.trim(),
                 category_id: Number(categoryId),
-                price: Number(price),
+                price: price.trim() === '' ? null : Number(price),
+                price_label: price.trim() === '' ? (product.price_label || 'Price to be confirmed') : null,
+                is_orderable: price.trim() !== '',
                 description: description.trim() || null,
                 is_available: isAvailable,
             });
@@ -1277,17 +1396,17 @@ function ProductEditModal({
                     >
                         {categories.map(category => (
                             <option key={category.id} value={category.id}>
-                                {category.name}
+                                {category.parent?.name ? `${category.parent.name} / ${category.name}` : category.name}
                             </option>
                         ))}
                     </select>
                     <input
-                        required
                         type="number"
                         min="0.01"
                         step="0.01"
                         value={price}
                         onChange={event => setPrice(event.target.value)}
+                        placeholder="Leave blank if the price is not confirmed"
                         className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none focus:border-[#d97745]"
                     />
                     <textarea
@@ -1321,12 +1440,13 @@ function ProductEditModal({
 }
 
 function UsersPanel({ rows, search, onRefresh, onNotice }: { rows: UserRow[]; search: string; onRefresh: () => void; onNotice: (message: string) => void }) {
+    const { confirm } = useFeedback();
     const [editing, setEditing] = useState<UserRow | null>(null);
 
     const filtered = rows.filter(row => `${row.name} ${row.email} ${row.role}`.toLowerCase().includes(search.toLowerCase()));
 
     async function removeUser(user: UserRow) {
-        if (!confirm(`Delete ${user.name}? Accounts with order history are deactivated instead of removed.`)) return;
+        if (!(await confirm(`Delete ${user.name}? Accounts with order history are deactivated instead of removed.`))) return;
         try {
             const response = await axios.delete(`/api/users/${user.id}`);
             onNotice(response.data?.message ?? 'User removed.');

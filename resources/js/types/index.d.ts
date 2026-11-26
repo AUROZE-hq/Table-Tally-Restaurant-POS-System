@@ -10,16 +10,25 @@ export interface User {
 export interface Category {
     id: number;
     name: string;
+    description?: string | null;
     is_active: boolean;
+    parent_id?: number | null;
+    sort_order?: number;
+    parent?: Pick<Category, 'id' | 'name'> | null;
+    children?: Category[];
 }
 
 export interface Product {
     id: number;
     name: string;
-    price: string | number;
+    description?: string | null;
+    price: string | number | null;
+    price_label?: string | null;
     category_id: number;
     category?: Category;
     is_available: boolean;
+    is_orderable?: boolean;
+    sort_order?: number;
 }
 
 export interface RestaurantTable {

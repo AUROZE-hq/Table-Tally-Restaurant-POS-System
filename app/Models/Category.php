@@ -10,15 +10,35 @@ class Category extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $fillable = ['name', 'is_active'];
+    protected $fillable = ['parent_id', 'name', 'description', 'is_active', 'sort_order'];
 
     protected function casts(): array
     {
         return ['is_active' => 'boolean'];
     }
 
+    public function parent()
+    {
+        return $this->belongsTo(Category::class, 'parent_id');
+    }
+
+    public function children()
+    {
+        return $this->hasMany(Category::class, 'parent_id')->orderBy('sort_order');
+    }
+
     public function products()
     {
-        return $this->hasMany(Product::class);
+        return $this->hasMany(Product::class)->orderBy('sort_order');
+    }
+
+    public static function menuSections()
+    {
+        return static::query()
+            ->whereRaw('is_active IS TRUE')
+            ->whereNull('parent_id')
+            ->with(['children' => fn ($query) => $query->whereRaw('is_active IS TRUE')->orderBy('sort_order')])
+            ->orderBy('sort_order')
+            ->get();
     }
 }

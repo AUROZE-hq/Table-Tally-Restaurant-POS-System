@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { Head, useForm } from '@inertiajs/react';
-import { ChefHat, LockKeyhole, Mail, ShieldCheck, UserRound, UtensilsCrossed } from 'lucide-react';
+import { LockKeyhole, Mail, ShieldCheck, UserRound, UtensilsCrossed } from 'lucide-react';
 
 type LoginRole = 'ADMIN' | 'CASHIER' | 'SERVER';
 
@@ -33,11 +33,9 @@ export default function Login() {
             <Head title="Sign in" />
             <div className="flex min-h-dvh flex-col bg-[#102b2b] text-[#102b2b] lg:grid lg:min-h-dvh lg:grid-cols-[1.05fr_0.95fr]">
                 <section className="hidden flex-col justify-between bg-[#102b2b] p-12 text-white lg:flex">
-                    <div className="flex items-center gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#d97745]">
-                            <ChefHat />
-                        </div>
-                        <span className="font-semibold tracking-[0.16em]">AUROZE POS</span>
+                    <div className="flex flex-col items-start gap-3">
+                        <img src="/images/vavikarai-logo.png" alt="வழிக்கரை" className="h-40 w-40 rounded-3xl bg-white object-contain p-1" />
+                        <span className="text-3xl font-semibold tracking-[0.18em]">VAVIKKARAI</span>
                     </div>
                     <div>
                         <p className="mb-4 max-w-md text-5xl font-semibold leading-[1.05] tracking-tight">
@@ -49,16 +47,14 @@ export default function Login() {
                             A calm, fast workspace for the people who keep your restaurant moving.
                         </p>
                     </div>
-                    <p className="text-xs text-white/35">Sri Lanka · LKR billing · 80mm receipts</p>
+                    <p className="text-xs text-white/35">Sri Lanka · POS · AUROZE</p>
                 </section>
 
                 <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-[#f7f5ef] px-4 py-6 pt-safe pb-safe sm:px-6 sm:py-8 lg:items-center lg:justify-center">
                     <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center lg:flex-initial">
                         <header className="mb-5 text-center sm:mb-8 lg:mb-8">
-                            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#d97745] text-white sm:h-14 sm:w-14 lg:hidden">
-                                <ChefHat className="h-6 w-6 sm:h-7 sm:w-7" />
-                            </div>
-                            <h1 className="mt-3 text-xl font-semibold tracking-tight sm:mt-4 sm:text-2xl lg:hidden">AUROZE POS</h1>
+                            <img src="/images/vavikarai-logo.png" alt="வழிக்கரை" className="mx-auto h-40 w-40 rounded-3xl bg-white object-contain p-1 shadow-sm sm:h-48 sm:w-48 lg:hidden" />
+                            <h1 className="mt-3 text-3xl font-semibold tracking-[0.12em] sm:mt-4 sm:text-4xl lg:hidden">VAVIKKARAI</h1>
                             <p className="mx-auto mt-2 max-w-xs text-xs leading-relaxed text-slate-500 lg:hidden">
                                 Sign in on phone or tablet — same workspace as desktop.
                             </p>

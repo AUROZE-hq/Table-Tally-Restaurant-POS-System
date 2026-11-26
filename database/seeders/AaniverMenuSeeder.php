@@ -4,168 +4,223 @@ namespace Database\Seeders;
 
 use App\Models\Category;
 use App\Models\Inventory;
-use App\Models\OrderItem;
-use App\Models\Payment;
 use App\Models\Product;
-use App\Models\StockMovement;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
 class AaniverMenuSeeder extends Seeder
 {
     /**
-     * Replace the demo menu with the Aaniver Restaurant catalog.
-     * Clears order line items so products can be removed safely (order headers are kept for history).
+     * Replace the selling menu. Past order lines keep a stored item name.
      */
     public function run(): void
     {
         DB::transaction(function () {
-            OrderItem::query()->delete();
-            Payment::query()->delete();
-            StockMovement::query()->delete();
-            Inventory::query()->delete();
-            Product::query()->forceDelete();
-            Category::query()->forceDelete();
+            Product::withTrashed()->forceDelete();
+            Category::withTrashed()->whereNotNull('parent_id')->forceDelete();
+            Category::withTrashed()->forceDelete();
 
-            foreach ($this->menu() as $categoryName => $items) {
+            $sort = 1;
+            $productSort = 1;
+
+            foreach ($this->catalog() as $section) {
                 $category = Category::create([
-                    'name' => $categoryName,
+                    'name' => $section['name'],
+                    'description' => $section['description'] ?? null,
                     'is_active' => true,
+                    'sort_order' => $sort,
                 ]);
+                $sort++;
 
-                foreach ($items as $item) {
-                    $product = Product::create([
-                        'category_id' => $category->id,
-                        'name' => $item['name'],
-                        'description' => $item['description'] ?? null,
-                        'price' => $item['price'],
-                        'is_available' => true,
-                    ]);
+                foreach ($section['items'] ?? [] as $item) {
+                    $this->createProduct($category, $item, $productSort);
+                    $productSort++;
+                }
 
-                    Inventory::create([
-                        'product_id' => $product->id,
-                        'current_stock' => 999,
-                        'minimum_stock' => 0,
-                        'unit' => 'pcs',
+                foreach ($section['children'] ?? [] as $child) {
+                    $sub = Category::create([
+                        'parent_id' => $category->id,
+                        'name' => $child['name'],
+                        'description' => $child['description'] ?? null,
+                        'is_active' => true,
+                        'sort_order' => $sort,
                     ]);
+                    $sort++;
+
+                    foreach ($child['items'] as $item) {
+                        $this->createProduct($sub, $item, $productSort);
+                        $productSort++;
+                    }
                 }
             }
         });
     }
 
     /**
-     * @return array<string, list<array{name: string, price: float, description?: string}>>
+     * @param  array{name: string, price?: float|null, description?: string, price_label?: string, orderable?: bool}  $item
      */
-    private function menu(): array
+    private function createProduct(Category $category, array $item, int $sort): void
     {
+        $price = $item['price'] ?? null;
+        $product = Product::create([
+            'category_id' => $category->id,
+            'name' => $item['name'],
+            'description' => $item['description'] ?? null,
+            'price' => $price,
+            'price_label' => $price === null ? ($item['price_label'] ?? null) : null,
+            'is_available' => true,
+            'is_orderable' => $item['orderable'] ?? $price !== null,
+            'sort_order' => $sort,
+        ]);
+
+        Inventory::create([
+            'product_id' => $product->id,
+            'current_stock' => 999,
+            'minimum_stock' => 0,
+            'unit' => 'pcs',
+        ]);
+    }
+
+    /**
+     * @return list<array{name: string, description?: string, items?: list<array<string, mixed>>, children?: list<array{name: string, description?: string, items: list<array<string, mixed>>}>}>
+     */
+    private function catalog(): array
+    {
+        $tbc = 'Price to be confirmed';
+        $ask = 'Ask our team';
+
         return [
-            'Breakfast' => [
-                ['name' => "Today's Millet Idly", 'price' => 280],
-                ['name' => 'Rainbow Mini Idly', 'price' => 320],
-                ['name' => 'Ghee Idly', 'price' => 300],
-                ['name' => 'Egg Idly Bowl', 'price' => 420],
-                ['name' => "Today's Millet Dosa", 'price' => 320],
-                ['name' => 'Beetroot Dosa', 'price' => 380],
-                ['name' => 'Spinach Dosa', 'price' => 380],
-                ['name' => 'Carrot Dosa', 'price' => 380],
-                ['name' => 'Egg Dosa', 'price' => 450],
-                ['name' => 'Masala Dosa', 'price' => 480],
-                ['name' => 'Coconut Sambol', 'price' => 80],
-                ['name' => 'Tomato Chutney', 'price' => 80],
-                ['name' => 'Mint Chutney', 'price' => 80],
-                ['name' => 'Sambar', 'price' => 120],
+            [
+                'name' => 'Breakfast',
+                'children' => [
+                    [
+                        'name' => 'Idly',
+                        'items' => [
+                            ['name' => "Today's Millet Idly Set (5 pcs)", 'price' => 290],
+                            ['name' => 'Normal Idly Set (5 pcs)', 'price' => 250],
+                            ['name' => 'Rainbow Mini Idly', 'price' => 350],
+                            ['name' => 'Ghee Idly', 'price' => 350],
+                            ['name' => 'Egg Idly Bowl', 'price' => 350],
+                        ],
+                    ],
+                    [
+                        'name' => 'Dosa',
+                        'description' => 'Served with coconut sambol, tomato chutney, mint chutney and sambar.',
+                        'items' => [
+                            ['name' => "Today's Millet Dosa", 'price' => 350],
+                            ['name' => 'Beetroot Dosa', 'price' => 300],
+                            ['name' => 'Spinach Dosa', 'price' => 300],
+                            ['name' => 'Carrot Dosa', 'price' => 300],
+                            ['name' => 'Egg Dosa', 'price' => 400],
+                            ['name' => 'Masala Dosa', 'price' => 400],
+                        ],
+                    ],
+                    [
+                        'name' => "Today's Millet",
+                        'description' => "Info only, not orderable. The featured millet changes daily and is used in that day's idly and dosa batter.",
+                        'items' => [
+                            ['name' => 'Monday: Kodo Millet (Varagu)', 'orderable' => false],
+                            ['name' => 'Tuesday: Little Millet (Samai)', 'orderable' => false],
+                            ['name' => 'Wednesday: Barnyard Millet (Kuthiraivali)', 'orderable' => false],
+                            ['name' => 'Thursday: Finger Millet (Kurakkan)', 'orderable' => false],
+                            ['name' => 'Friday: Pearl Millet (Kambu)', 'orderable' => false],
+                            ['name' => 'Saturday: Foxtail Millet (Thinai)', 'orderable' => false],
+                            ['name' => "Sunday: Chef's Mixed Millet Special", 'orderable' => false],
+                        ],
+                    ],
+                ],
             ],
-            'Pittu & Idiyappam Bar' => [
-                ['name' => 'Pittu — Kodo Millet', 'price' => 380],
-                ['name' => 'Pittu — Little Millet', 'price' => 380],
-                ['name' => 'Pittu — Barnyard Millet', 'price' => 380],
-                ['name' => 'Pittu — Finger Millet', 'price' => 400],
-                ['name' => 'Pittu — Pearl Millet', 'price' => 380],
-                ['name' => 'Pittu — Foxtail Millet', 'price' => 380],
-                ['name' => 'Pittu — Multi-Millet', 'price' => 420],
-                ['name' => 'Idiyappam — Kodo Millet', 'price' => 380],
-                ['name' => 'Idiyappam — Little Millet', 'price' => 380],
-                ['name' => 'Idiyappam — Barnyard Millet', 'price' => 380],
-                ['name' => 'Idiyappam — Finger Millet', 'price' => 400],
-                ['name' => 'Idiyappam — Pearl Millet', 'price' => 380],
-                ['name' => 'Idiyappam — Foxtail Millet', 'price' => 380],
-                ['name' => 'Idiyappam — Multi-Millet', 'price' => 420],
-                ['name' => 'Side: Vegetable Curry', 'price' => 180],
-                ['name' => 'Side: Dhal Curry', 'price' => 160],
-                ['name' => 'Side: Egg Curry', 'price' => 220],
-                ['name' => 'Side: Sothi', 'price' => 140],
-                ['name' => 'Side: Coconut Milk', 'price' => 120],
-                ['name' => 'Side: Coconut Sambol', 'price' => 80],
-                ['name' => 'Side: Lunu Miris', 'price' => 60],
+            [
+                'name' => 'Traditional Lunch',
+                'children' => [
+                    [
+                        'name' => "Farmer's Lunch",
+                        'items' => [
+                            ['name' => 'Red or White Rice – Vegetarian', 'price' => 350, 'description' => 'Rice with seasonal vegetable curries and traditional accompaniments.'],
+                            ['name' => 'Red or White Rice – Egg', 'price' => 450, 'description' => 'Traditional rice meal with egg.'],
+                            ['name' => 'Millet Rice – Vegetarian', 'price' => 400, 'description' => 'Millet rice with seasonal vegetable curries and traditional accompaniments.'],
+                            ['name' => 'Millet Rice – Egg', 'price' => 500, 'description' => 'Millet rice meal served with egg.'],
+                        ],
+                    ],
+                    [
+                        'name' => 'Wellness Lunch',
+                        'items' => [
+                            ['name' => 'Wellness Lunch – Vegetarian', 'price' => 420, 'description' => 'More vegetables, less millet rice, with dhal and seasonal accompaniments.'],
+                            ['name' => 'Wellness Lunch – Egg', 'price' => 500, 'description' => 'More vegetables, less millet rice, with egg and seasonal accompaniments.'],
+                        ],
+                    ],
+                    [
+                        'name' => 'Egg Lunch',
+                        'items' => [
+                            ['name' => 'Egg Lunch', 'price_label' => $tbc, 'description' => 'Traditional lunch with your choice of boiled egg or egg curry.'],
+                        ],
+                    ],
+                ],
             ],
-            'Healthy Starters & Light Bites' => [
-                ['name' => 'Aaniver Rainbow Salad', 'price' => 550],
-                ['name' => 'Sprouted Green Gram Salad', 'price' => 420],
-                ['name' => 'Egg Power Salad', 'price' => 480],
-                ['name' => 'Grilled Paneer', 'price' => 520],
-                ['name' => 'Millet Cutlets', 'price' => 380],
-                ['name' => 'Soup of the Day', 'price' => 350],
+            [
+                'name' => 'Pittu & Idiyappam Bar',
+                'children' => [
+                    [
+                        'name' => 'Pittu',
+                        'items' => [
+                            ['name' => 'All varieties of Millet Pittu', 'price' => 275, 'description' => 'Kodo, little, barnyard, finger, pearl, foxtail and mixed millet.'],
+                            ['name' => 'Rice Flour Pittu', 'price' => 145],
+                        ],
+                    ],
+                    [
+                        'name' => 'Idiyappam (String Hoppers)',
+                        'items' => [
+                            ['name' => 'Millet Idiyappam (8 pcs)', 'price' => 180, 'description' => 'Available in millet varieties.'],
+                            ['name' => 'Red Rice Idiyappam (10 pcs)', 'price' => 120],
+                        ],
+                    ],
+                ],
             ],
-            'Traditional Lunch' => [
-                ['name' => "Farmer's Lunch", 'price' => 950, 'description' => 'Mixed millet or red rice, 3 seasonal vegetable curries, dhal, greens, sambol, pickle & papadam'],
-                ['name' => 'Wellness Lunch', 'price' => 920, 'description' => 'Mixed millet, seasonal vegetables, salad, dhal and herbal accompaniment'],
-                ['name' => 'Egg Lunch', 'price' => 980, 'description' => 'Traditional lunch with boiled egg or egg curry'],
+            [
+                'name' => 'Curries & Accompaniments',
+                'items' => [
+                    ['name' => 'Vegetable Curry', 'price' => 90],
+                    ['name' => 'Dhal Curry', 'price' => 100],
+                    ['name' => 'Egg Curry', 'price' => 130],
+                    ['name' => 'Sothi', 'price' => 100],
+                    ['name' => 'Coconut Milk', 'price' => 100],
+                    ['name' => 'Coconut Sambol', 'price' => 55],
+                    ['name' => 'Paneer Curry', 'price' => 325],
+                    ['name' => 'Nattu Kozhi Curry', 'price' => 350],
+                    ['name' => 'Fish Curry', 'price' => 175],
+                    ['name' => 'Pittu Kothu and String Hopper Kothu', 'price_label' => $ask, 'description' => 'Egg / chicken options. Ask our team for availability and price.'],
+                ],
             ],
-            'Aaniver Wellness Meals' => [
-                ['name' => 'Detox Plate', 'price' => 1100],
-                ['name' => 'Low GI Plate', 'price' => 1050],
-                ['name' => 'Protein Plate', 'price' => 1150],
-                ['name' => "Women's Wellness Plate", 'price' => 1180],
-                ['name' => 'Kids Growth Plate', 'price' => 650],
+            [
+                'name' => 'Healthy Starters & Light Bites',
+                'items' => [
+                    ['name' => 'Aaniver Rainbow Salad', 'price_label' => $tbc, 'description' => 'A colourful mix of fresh vegetables and greens.'],
+                    ['name' => 'Sprouted Green Gram Salad', 'price_label' => $tbc, 'description' => 'Fresh sprouted green gram with seasonal vegetables.'],
+                    ['name' => 'Egg Power Salad', 'price_label' => $tbc, 'description' => 'A protein-rich salad with egg.'],
+                    ['name' => 'Grilled Paneer', 'price_label' => $tbc],
+                    ['name' => 'Millet Cutlets', 'price_label' => $tbc],
+                    ['name' => 'Soup of the Day', 'price_label' => $tbc, 'description' => "Ask for today's freshly prepared soup."],
+                ],
             ],
-            'Aaniver Signature Platters' => [
-                ['name' => 'Rainbow Breakfast Platter', 'price' => 1800],
-                ['name' => 'Millet Explorer Platter', 'price' => 2200],
-                ['name' => 'Family Sharing Board', 'price' => 3200],
+            [
+                'name' => 'Aaniver Wellness Meals',
+                'description' => 'LKR 599 per plate.',
+                'items' => [
+                    ['name' => 'Detox Plate', 'price' => 599, 'description' => 'Mixed millet, steamed vegetables, leafy greens, sprouts, fresh salad and herbal tea.'],
+                    ['name' => 'Low GI Plate', 'price' => 599, 'description' => 'Low-GI millet, vegetable curries, dhal, greens, cucumber salad and a sugar-free herbal drink.'],
+                    ['name' => 'Protein Plate', 'price' => 599, 'description' => 'Millet, legumes, sprouts, boiled egg, seasonal vegetables and finger millet malt.'],
+                    ['name' => "Women's Wellness Plate", 'price' => 599, 'description' => 'Iron-rich millet, beetroot, drumstick leaves, sesame, legumes and finger millet malt.'],
+                    ['name' => 'Kids Growth Plate', 'price' => 599, 'description' => 'Rainbow mini idlies, egg, fresh fruit, millet pancake and fresh juice.'],
+                ],
             ],
-            'Kanji' => [
-                ['name' => 'Aaniver Multi-Millet Kanji', 'price' => 380],
-                ['name' => 'Finger Millet Kanji', 'price' => 360],
-                ['name' => 'Green Gram Kanji', 'price' => 340],
-                ['name' => 'Horse Gram Kanji', 'price' => 360],
-                ['name' => 'Seasonal Village Kanji', 'price' => 400, 'description' => 'With seasonal village greens'],
-            ],
-            "Little Farmers' Menu (Kids)" => [
-                ['name' => 'Rainbow Breakfast (Kids)', 'price' => 450],
-                ['name' => 'Smiley Egg Dosa', 'price' => 420],
-                ['name' => 'Mini Idly Set', 'price' => 380],
-                ['name' => 'Millet Pancakes', 'price' => 400],
-            ],
-            'Healthy Drinks' => [
-                ['name' => 'Finger Millet Malt', 'price' => 280],
-                ['name' => 'Multi-Millet Health Drink', 'price' => 300],
-                ['name' => 'Fresh Lime Juice', 'price' => 220],
-                ['name' => 'Passion Fruit Juice', 'price' => 320],
-                ['name' => 'Wood Apple Juice', 'price' => 300],
-                ['name' => 'Pineapple Juice', 'price' => 280],
-                ['name' => 'Watermelon Juice', 'price' => 250],
-                ['name' => 'Moringa Tea', 'price' => 180],
-                ['name' => 'Tulsi Tea', 'price' => 180],
-                ['name' => 'Ginger Tea', 'price' => 180],
-                ['name' => 'Lemongrass Tea', 'price' => 180],
-                ['name' => 'Cinnamon Tea', 'price' => 200],
-            ],
-            'Healthy Desserts' => [
-                ['name' => 'Millet Payasam', 'price' => 320],
-                ['name' => 'Finger Millet Pudding', 'price' => 350],
-                ['name' => 'Curd with Kithul Treacle', 'price' => 280],
-                ['name' => 'Seasonal Fruit Bowl', 'price' => 380],
-            ],
-            'Take-Home Products' => [
-                ['name' => 'Multi-Millet Flour', 'price' => 650],
-                ['name' => 'Pittu Flour', 'price' => 580],
-                ['name' => 'Porridge Mixes', 'price' => 720],
-                ['name' => 'Baby Food Range', 'price' => 850],
-                ['name' => 'Millet Flakes', 'price' => 480],
-                ['name' => 'Millet Cookies', 'price' => 420],
-                ['name' => 'Herbal Teas (pack)', 'price' => 380],
-                ['name' => 'Horse Gram Powder', 'price' => 450],
-                ['name' => 'Fenugreek Powder', 'price' => 420],
+            [
+                'name' => 'Special Orders & Beverages',
+                'items' => [
+                    ['name' => 'Kiribath', 'price_label' => $tbc, 'description' => 'Available on special order.'],
+                    ['name' => 'Egg Cutlet / Fish Cutlet / Patties', 'price_label' => $tbc, 'description' => 'Special orders.'],
+                    ['name' => 'Milk Tea / Plain Tea / Milk', 'price_label' => $tbc],
+                    ['name' => 'Tea with Snacks Package', 'price_label' => $tbc],
+                ],
             ],
         ];
     }

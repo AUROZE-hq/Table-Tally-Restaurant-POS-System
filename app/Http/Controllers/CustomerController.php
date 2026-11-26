@@ -44,7 +44,7 @@ class CustomerController extends Controller
                     ->latest()
                     ->limit(5)
                     ->with([
-                        'items:id,order_id,product_id,quantity,line_total',
+                        'items:id,order_id,product_id,product_name,quantity,line_total',
                         'items.product:id,name',
                     ])
                     ->get()
