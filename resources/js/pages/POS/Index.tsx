@@ -335,8 +335,8 @@ export default function POS({ categories, products, tables, shift: initialShift 
                             Turn <strong>Shift</strong> on and enter opening cash in the box before taking payments.
                         </div>
                     )}
-                    <div className="grid min-h-0 flex-1 gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_340px]">
-                        <section className="flex min-h-0 min-w-0 gap-3">
+                    <div className="grid min-h-0 flex-1 gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_340px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
+                        <section className="flex h-full min-h-0 min-w-0 gap-3">
                             <div className="hidden min-h-0 shrink-0 lg:flex">
                                 <PosCategoryNav
                                     variant="sidebar"
@@ -376,9 +376,9 @@ export default function POS({ categories, products, tables, shift: initialShift 
                             </div>
                             </div>
                         </section>
-                        <aside className="flex min-h-0 flex-col rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                        <aside className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
                             {floorOrders.filter((order: any) => order.status === 'OPEN' || order.status === 'READY' || order.status === 'BILLED').length > 0 && (
-                                <div className="mb-2 max-h-28 space-y-1 overflow-y-auto">
+                                <div className="mb-2 max-h-16 shrink-0 space-y-1 overflow-y-auto">
                                     <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Server tables</p>
                                     {floorOrders.filter((order: any) => order.status !== 'COMPLETED').map((order: any) => (
                                         <button key={order.id} type="button" disabled={order.status === 'BILLED'} onClick={() => { setBillOrder(order); setNotice(''); }} className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-xs ${billOrder?.id === order.id ? 'bg-[#fff4ec] ring-1 ring-[#d97745]' : 'bg-slate-50'} disabled:opacity-70`}>
@@ -388,69 +388,85 @@ export default function POS({ categories, products, tables, shift: initialShift 
                                     ))}
                                 </div>
                             )}
-                            <div className="flex items-center justify-between">
+                            <div className="flex shrink-0 items-center justify-between">
                                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{billOrder ? `Bill ${billOrder.table?.name ?? 'table'}` : 'Current order'}</p>
-                                <button onClick={() => { setCart([]); setBillOrder(null); }} className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 transition hover:bg-red-50 hover:text-red-500" title="Clear order"><Trash2 size={18} /></button>
+                                <button onClick={() => { setCart([]); setBillOrder(null); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-500" title="Clear order"><Trash2 size={16} /></button>
                             </div>
-                            <div className="mt-2 flex w-full gap-2 rounded-xl bg-slate-100 p-1">
-                                <button type="button" onClick={() => { setOrderType('DINE_IN'); setCustomerPhone(''); }} className={`min-h-11 flex-1 rounded-lg text-sm font-semibold transition ${orderType === 'DINE_IN' ? 'bg-white text-[#102b2b] shadow-sm' : 'text-slate-500'}`}>Dine in</button>
-                                <button type="button" onClick={() => { setOrderType('TAKEAWAY'); setTableId(''); }} className={`min-h-11 flex-1 rounded-lg text-sm font-semibold transition ${orderType === 'TAKEAWAY' ? 'bg-white text-[#102b2b] shadow-sm' : 'text-slate-500'}`}>Takeaway</button>
+                            <div className="mt-1.5 flex w-full shrink-0 gap-1 rounded-xl bg-slate-100 p-1">
+                                <button type="button" onClick={() => { setOrderType('DINE_IN'); setCustomerPhone(''); }} className={`min-h-9 flex-1 rounded-lg text-sm font-semibold transition ${orderType === 'DINE_IN' ? 'bg-white text-[#102b2b] shadow-sm' : 'text-slate-500'}`}>Dine in</button>
+                                <button type="button" onClick={() => { setOrderType('TAKEAWAY'); setTableId(''); }} className={`min-h-9 flex-1 rounded-lg text-sm font-semibold transition ${orderType === 'TAKEAWAY' ? 'bg-white text-[#102b2b] shadow-sm' : 'text-slate-500'}`}>Takeaway</button>
                             </div>
                             {orderType === 'DINE_IN' && (
-                                <select value={tableId} onChange={e => setTableId(e.target.value ? Number(e.target.value) : '')} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-800 outline-none focus:border-[#d97745]">
+                                <select value={tableId} onChange={e => setTableId(e.target.value ? Number(e.target.value) : '')} className="mt-1.5 min-h-9 w-full shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-800 outline-none focus:border-[#d97745]">
                                     <option value="">Select table</option>
                                     {tables.filter(table => table.status === 'AVAILABLE').map(table => <option key={table.id} value={table.id}>{table.name}</option>)}
                                 </select>
                             )}
                             {orderType === 'TAKEAWAY' && (
-                                <input type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="Customer phone" className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-[#d97745]" autoComplete="tel" />
+                                <input type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="Customer phone" className="mt-1.5 min-h-9 w-full shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-[#d97745]" autoComplete="tel" />
                             )}
-                            <div className="my-2 min-h-0 flex-1 space-y-2 overflow-y-auto">
-                                {cart.length === 0 ? (
-                                    <div className="flex h-full min-h-16 flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 text-center">
-                                        <ShoppingBag className="mb-1 text-slate-300" size={16} />
-                                        <p className="text-xs text-slate-400">Tap a menu item</p>
-                                    </div>
-                                ) : cart.map(item => (
-                                    <div key={item.id} className="rounded-xl bg-slate-50 px-2.5 py-2">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <p className="truncate text-sm font-semibold">{item.name}</p>
-                                            <button onClick={() => setCart(cart.filter(cartItem => cartItem.id !== item.id))} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><X size={16} /></button>
-                                        </div>
-                                        <div className="mt-1 flex items-center justify-between">
-                                            <span className="text-xs text-slate-500">{money(Number(item.price) * item.quantity)}</span>
-                                            <div className="flex items-center gap-2">
-                                                <button onClick={() => changeQuantity(item.id, -1)} className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-slate-600 shadow-sm ring-1 ring-slate-200"><Minus size={16} /></button>
-                                                <span className="w-6 text-center text-sm font-semibold">{item.quantity}</span>
-                                                <button onClick={() => changeQuantity(item.id, 1)} className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-slate-600 shadow-sm ring-1 ring-slate-200"><Plus size={16} /></button>
+                            <div className="mt-2 flex min-h-[8.5rem] flex-1 flex-col overflow-hidden rounded-xl bg-[#f6f7f5] ring-1 ring-slate-100">
+                                <div className="flex shrink-0 items-center justify-between px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    <span>Added items</span>
+                                    <span>{billOrder ? (billOrder.items?.length ?? 0) : cart.reduce((sum, item) => sum + item.quantity, 0)}</span>
+                                </div>
+                                <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-1.5 pb-1.5">
+                                    {billOrder ? (
+                                        (billOrder.items ?? []).length === 0 ? (
+                                            <p className="px-2 py-4 text-center text-xs text-slate-400">No dishes on this table</p>
+                                        ) : (billOrder.items ?? []).map((item: any) => (
+                                            <div key={item.id} className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-2 shadow-sm">
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="truncate text-[13px] font-semibold leading-tight text-[#102b2b]">{item.product?.name ?? item.product_name ?? 'Item'}</p>
+                                                    <p className="text-[11px] font-medium text-[#d97745]">{money(Number(item.line_total))}</p>
+                                                </div>
+                                                <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">×{item.quantity}</span>
                                             </div>
+                                        ))
+                                    ) : cart.length === 0 ? (
+                                        <div className="flex h-full min-h-16 flex-col items-center justify-center text-center">
+                                            <ShoppingBag className="mb-1 text-slate-300" size={16} />
+                                            <p className="text-xs text-slate-400">Tap a menu item to add it</p>
                                         </div>
-                                    </div>
-                                ))}
+                                    ) : cart.map(item => (
+                                        <div key={item.id} className="flex items-center gap-1.5 rounded-lg bg-white px-2 py-1.5 shadow-sm">
+                                            <div className="min-w-0 flex-1">
+                                                <p className="truncate text-[13px] font-semibold leading-tight text-[#102b2b]">{item.name}</p>
+                                                <p className="text-[11px] font-medium text-[#d97745]">{money(Number(item.price) * item.quantity)}</p>
+                                            </div>
+                                            <div className="flex shrink-0 items-center rounded-lg bg-slate-50 ring-1 ring-slate-200">
+                                                <button type="button" onClick={() => changeQuantity(item.id, -1)} className="flex h-8 w-8 items-center justify-center text-slate-600" aria-label={`Decrease ${item.name}`}><Minus size={14} /></button>
+                                                <span className="w-5 text-center text-sm font-bold">{item.quantity}</span>
+                                                <button type="button" onClick={() => changeQuantity(item.id, 1)} className="flex h-8 w-8 items-center justify-center text-slate-600" aria-label={`Increase ${item.name}`}><Plus size={14} /></button>
+                                            </div>
+                                            <button type="button" onClick={() => setCart(cart.filter(cartItem => cartItem.id !== item.id))} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500" aria-label={`Remove ${item.name}`}><X size={14} /></button>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                            {notice && <div className="mb-2 flex items-start gap-1.5 rounded-lg bg-[#fff4ec] px-2 py-1.5 text-[11px] font-medium text-[#a85329]"><Check size={13} className="mt-0.5 shrink-0" />{notice}</div>}
-                            <div className="shrink-0 space-y-1.5 border-t border-dashed border-slate-200 pt-2 text-xs">
+                            {notice && <div className="mt-1.5 flex shrink-0 items-start gap-1.5 rounded-lg bg-[#fff4ec] px-2 py-1.5 text-[11px] font-medium text-[#a85329]"><Check size={13} className="mt-0.5 shrink-0" />{notice}</div>}
+                            <div className="mt-1.5 shrink-0 space-y-1.5 border-t border-dashed border-slate-200 pt-1.5 text-xs">
                                 <div className="flex justify-between text-slate-500"><span>Subtotal</span><span>{money(subtotal)}</span></div>
                                 <div className="flex items-center justify-between gap-2 text-slate-500">
                                     <span>Discount</span>
                                     <div className="flex items-center gap-1">
-                                        <div className="flex gap-1 rounded-lg bg-slate-100 p-1 text-xs font-bold">
-                                            <button type="button" onClick={() => setDiscountType('amount')} className={`min-h-9 min-w-11 rounded-md px-2 ${discountType === 'amount' ? 'bg-white text-[#102b2b] shadow-sm' : 'text-slate-400'}`}>Rs.</button>
-                                            <button type="button" onClick={() => setDiscountType('percent')} className={`min-h-9 min-w-11 rounded-md px-2 ${discountType === 'percent' ? 'bg-white text-[#102b2b] shadow-sm' : 'text-slate-400'}`}>%</button>
+                                        <div className="flex gap-0.5 rounded-lg bg-slate-100 p-0.5 text-xs font-bold">
+                                            <button type="button" onClick={() => setDiscountType('amount')} className={`min-h-8 min-w-9 rounded-md px-2 ${discountType === 'amount' ? 'bg-white text-[#102b2b] shadow-sm' : 'text-slate-400'}`}>Rs.</button>
+                                            <button type="button" onClick={() => setDiscountType('percent')} className={`min-h-8 min-w-9 rounded-md px-2 ${discountType === 'percent' ? 'bg-white text-[#102b2b] shadow-sm' : 'text-slate-400'}`}>%</button>
                                         </div>
-                                        <input type="number" min="0" max={discountType === 'percent' ? 100 : undefined} step={discountType === 'percent' ? '0.01' : '1'} value={discountInput} onChange={e => setDiscountInput(e.target.value)} className="min-h-11 w-20 rounded-lg border border-slate-200 px-2 text-right text-sm outline-none focus:border-[#d97745]" placeholder="0" />
+                                        <input type="number" min="0" max={discountType === 'percent' ? 100 : undefined} step={discountType === 'percent' ? '0.01' : '1'} value={discountInput} onChange={e => setDiscountInput(e.target.value)} className="min-h-8 w-16 rounded-lg border border-slate-200 px-2 text-right text-sm outline-none focus:border-[#d97745]" placeholder="0" />
                                     </div>
                                 </div>
                                 {discount > 0 && <p className="text-right text-[11px] text-slate-400">−{money(discount)}{discountType === 'percent' && discountInput ? ` (${discountInput}%)` : ''}</p>}
-                                <div className="flex justify-between border-t border-slate-100 pt-1.5 text-sm font-bold"><span>Total</span><span className="text-[#d97745]">{money(total)}</span></div>
-                                <div className="grid grid-cols-2 gap-2">
+                                <div className="flex justify-between text-sm font-bold"><span>Total</span><span className="text-[#d97745]">{money(total)}</span></div>
+                                <div className="grid grid-cols-2 gap-1.5">
                                     {([['CASH', Banknote], ['CARD', CreditCard]] as const).map(([method, Icon]) => (
-                                        <button key={method} onClick={() => setPaymentMethod(method)} className={`flex min-h-12 items-center justify-center gap-1 rounded-xl border text-[11px] font-bold transition ${paymentMethod === method ? 'border-[#d97745] bg-[#fff4ec] text-[#b65b2e]' : 'border-slate-200 text-slate-400 hover:bg-slate-50'}`}><Icon size={15} />{method}</button>
+                                        <button key={method} onClick={() => setPaymentMethod(method)} className={`flex min-h-9 items-center justify-center gap-1 rounded-lg border text-[11px] font-bold transition ${paymentMethod === method ? 'border-[#d97745] bg-[#fff4ec] text-[#b65b2e]' : 'border-slate-200 text-slate-400 hover:bg-slate-50'}`}><Icon size={14} />{method}</button>
                                     ))}
                                 </div>
-                                {paymentMethod === 'CASH' && <input type="number" min="0" value={received} onChange={e => setReceived(e.target.value)} placeholder={`Cash received (${total.toFixed(2)})`} className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-[#d97745]" />}
+                                {paymentMethod === 'CASH' && <input type="number" min="0" value={received} onChange={e => setReceived(e.target.value)} placeholder={`Cash received (${total.toFixed(2)})`} className="min-h-9 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-[#d97745]" />}
                                 {paymentMethod === 'CASH' && cashChange > 0 && <p className="text-[11px] font-medium text-[#2c7150]">Change: {money(cashChange)}</p>}
-                                <button type="button" disabled={busy || !shift || billOrder?.status === 'BILLED'} onClick={openCheckout} className="min-h-12 w-full rounded-xl bg-[#d97745] text-sm font-bold text-white shadow-md shadow-[#d97745]/20 transition hover:bg-[#bf6335] disabled:opacity-50">{busy ? 'Processing...' : !shift ? 'Open a shift to sell' : billOrder ? 'Create table bill' : 'Charge & complete'}</button>
+                                <button type="button" disabled={busy || !shift || billOrder?.status === 'BILLED'} onClick={openCheckout} className="min-h-11 w-full rounded-xl bg-[#d97745] text-sm font-bold text-white shadow-md shadow-[#d97745]/20 transition hover:bg-[#bf6335] disabled:opacity-50">{busy ? 'Processing...' : !shift ? 'Open a shift to sell' : billOrder ? 'Create table bill' : 'Charge & complete'}</button>
                             </div>
                         </aside>
                     </div>

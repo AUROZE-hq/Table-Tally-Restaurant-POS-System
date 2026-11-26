@@ -5,6 +5,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { createInertiaApp, router } from '@inertiajs/react';
 import CopyrightBar from './components/layout/CopyrightBar';
+import TouchKeyboard from './components/ui/TouchKeyboard';
 
 const pages = import.meta.glob('./pages/**/*.tsx', { eager: true }) as Record<string, { default: React.ComponentType }>; 
 
@@ -33,6 +34,7 @@ createInertiaApp({
         createRoot(el).render(
             <React.StrictMode>
                 <App {...props} />
+                <TouchKeyboard />
                 <CopyrightBar />
             </React.StrictMode>,
         );
