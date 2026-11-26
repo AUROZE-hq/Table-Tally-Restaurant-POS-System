@@ -6,24 +6,22 @@ const STORAGE_KEY = 'pos-favorite-categories';
 
 const SHORT_LABELS: Record<string, string> = {
     Breakfast: 'Breakfast',
-    'Pittu & Idiyappam Bar': 'Pittu bar',
-    'Healthy Starters & Light Bites': 'Starters',
     'Traditional Lunch': 'Lunch',
+    'Pittu & Idiyappam Bar': 'Pittu bar',
+    'Curries & Accompaniments': 'Curries',
+    'Healthy Starters & Light Bites': 'Starters',
     'Aaniver Wellness Meals': 'Wellness',
-    'Aaniver Signature Platters': 'Platters',
-    Kanji: 'Kanji',
-    "Little Farmers' Menu (Kids)": 'Kids',
-    'Healthy Drinks': 'Drinks',
-    'Healthy Desserts': 'Desserts',
-    'Take-Home Products': 'Take-home',
+    'Special Orders & Beverages': 'Specials',
 };
 
 const ACCENT: Record<string, string> = {
     Breakfast: 'bg-amber-100 text-amber-900 ring-amber-200',
     'Traditional Lunch': 'bg-emerald-100 text-emerald-900 ring-emerald-200',
-    'Healthy Drinks': 'bg-sky-100 text-sky-900 ring-sky-200',
-    'Aaniver Signature Platters': 'bg-violet-100 text-violet-900 ring-violet-200',
-    'Take-Home Products': 'bg-slate-200 text-slate-800 ring-slate-300',
+    'Pittu & Idiyappam Bar': 'bg-orange-100 text-orange-900 ring-orange-200',
+    'Curries & Accompaniments': 'bg-rose-100 text-rose-900 ring-rose-200',
+    'Healthy Starters & Light Bites': 'bg-lime-100 text-lime-900 ring-lime-200',
+    'Aaniver Wellness Meals': 'bg-teal-100 text-teal-900 ring-teal-200',
+    'Special Orders & Beverages': 'bg-sky-100 text-sky-900 ring-sky-200',
 };
 
 function shortLabel(name: string) {
@@ -42,13 +40,13 @@ function initials(name: string) {
 
 function timeSuggestedNames(hour: number): string[] {
     if (hour < 11) {
-        return ['Breakfast', 'Kanji', "Little Farmers' Menu (Kids)", 'Healthy Drinks'];
+        return ['Breakfast', 'Special Orders & Beverages'];
     }
     if (hour < 15) {
-        return ['Traditional Lunch', 'Aaniver Wellness Meals', 'Healthy Starters & Light Bites', 'Healthy Drinks'];
+        return ['Traditional Lunch', 'Aaniver Wellness Meals', 'Healthy Starters & Light Bites', 'Curries & Accompaniments'];
     }
 
-    return ['Aaniver Signature Platters', 'Traditional Lunch', 'Healthy Drinks', 'Healthy Desserts', 'Take-Home Products'];
+    return ['Pittu & Idiyappam Bar', 'Traditional Lunch', 'Special Orders & Beverages'];
 }
 
 function useFavoriteCategoryIds() {
@@ -90,12 +88,16 @@ export default function PosCategoryNav({ categories, products, activeCategory, o
 
     const counts = useMemo(() => {
         const map = new Map<number, number>();
-        for (const product of products) {
-            map.set(product.category_id, (map.get(product.category_id) ?? 0) + 1);
+        for (const category of categories) {
+            const childIds = new Set((category.children ?? []).map(child => child.id));
+            map.set(
+                category.id,
+                products.filter(product => product.category_id === category.id || childIds.has(product.category_id) || product.category?.parent_id === category.id).length,
+            );
         }
 
         return map;
-    }, [products]);
+    }, [categories, products]);
 
     const suggested = useMemo(() => {
         const names = timeSuggestedNames(new Date().getHours());

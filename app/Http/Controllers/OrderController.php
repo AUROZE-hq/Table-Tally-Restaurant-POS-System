@@ -59,7 +59,7 @@ class OrderController extends Controller
         $orders = Order::query()
             ->select(['id', 'order_number', 'order_type', 'table_id', 'status', 'subtotal', 'discount', 'total', 'notes', 'server_id', 'cashier_id', 'created_at'])
             ->with([
-                'items:id,order_id,product_id,server_id,quantity,line_total',
+                'items:id,order_id,product_id,product_name,server_id,quantity,line_total',
                 'items.product:id,name',
                 'items.server:id,name',
                 'table:id,name',
@@ -101,7 +101,7 @@ class OrderController extends Controller
         $orders = Order::query()
             ->select(['id', 'order_number', 'order_type', 'table_id', 'status', 'subtotal', 'discount', 'total', 'server_id', 'cashier_id', 'created_at', 'updated_at'])
             ->with([
-                'items:id,order_id,product_id,server_id,quantity,line_total',
+                'items:id,order_id,product_id,product_name,server_id,quantity,line_total',
                 'items.product:id,name',
                 'items.server:id,name',
                 'table:id,name',
@@ -157,7 +157,9 @@ class OrderController extends Controller
             foreach ($data['items'] as $item) {
                 $product = $products->get($item['product_id']);
                 abort_unless($product, 422, 'One or more products are unavailable.');
-                $subtotal += (float) $product->price * $item['quantity'];
+                $unit = $product->sellablePrice();
+                abort_unless($unit !== null, 422, $product->price_label ?: 'Price to be confirmed.');
+                $subtotal += $unit * $item['quantity'];
             }
 
             $discount = min((float) ($data['discount'] ?? 0), $subtotal);
@@ -455,7 +457,7 @@ class OrderController extends Controller
         }
 
         $order->load([
-            'items:id,order_id,product_id,server_id,quantity,line_total',
+            'items:id,order_id,product_id,product_name,server_id,quantity,line_total',
             'items.product:id,name',
             'items.server:id,name',
             'table:id,name',
@@ -552,6 +554,8 @@ class OrderController extends Controller
     private function addLine(Order $order, Product $product, array $item, ?int $serverId = null): void
     {
         $addQty = (int) $item['quantity'];
+        $unit = $product->sellablePrice();
+        abort_unless($unit !== null, 422, $product->price_label ?: 'Price to be confirmed.');
         $existing = $order->items()->where('product_id', $product->id)->first();
 
         if ($inventory = Inventory::where('product_id', $product->id)->first()) {
@@ -565,8 +569,8 @@ class OrderController extends Controller
             $quantity = $existing->quantity + $addQty;
             $existing->update([
                 'quantity' => $quantity,
-                'unit_price' => $product->price,
-                'line_total' => (float) $product->price * $quantity,
+                'unit_price' => $unit,
+                'line_total' => $unit * $quantity,
                 'server_id' => $serverId,
                 'notes' => $item['notes'] ?? $existing->notes,
             ]);
@@ -576,10 +580,11 @@ class OrderController extends Controller
 
         $order->items()->create([
             'product_id' => $product->id,
+            'product_name' => $product->name,
             'server_id' => $serverId,
             'quantity' => $addQty,
-            'unit_price' => $product->price,
-            'line_total' => (float) $product->price * $addQty,
+            'unit_price' => $unit,
+            'line_total' => $unit * $addQty,
             'notes' => $item['notes'] ?? null,
         ]);
     }

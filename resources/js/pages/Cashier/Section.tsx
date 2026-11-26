@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Head, Link } from '@inertiajs/react';
 import { ArrowLeft, Banknote, ClipboardList, CreditCard, Phone, Printer, ReceiptText, ShoppingBag, Table2, Users } from 'lucide-react';
 import AppShell from '../../components/layout/AppShell';
+import { openReceipt } from '../../lib/receipt';
 
 type Section = 'tables' | 'orders' | 'billing' | 'payments' | 'shift' | 'receipts' | 'customers';
 type OrderFilter = 'all' | 'cash' | 'card' | 'paid';
@@ -281,6 +282,7 @@ interface CustomerOrderItem {
     id: number;
     quantity: number;
     line_total: number | string;
+    product_name?: string | null;
     product?: { id: number; name: string } | null;
 }
 
@@ -464,7 +466,7 @@ function CashierCustomersPanel() {
                                                                 className="flex items-center justify-between gap-2 text-sm text-slate-600"
                                                             >
                                                                 <span className="min-w-0 truncate">
-                                                                    {item.quantity} × {item.product?.name ?? 'Item'}
+                                                                    {item.quantity} × {item.product?.name ?? item.product_name ?? 'Item'}
                                                                 </span>
                                                                 <span className="shrink-0 text-xs font-semibold text-slate-500">
                                                                     {money(Number(item.line_total))}
@@ -749,18 +751,7 @@ function ListSection({ section, rows }: { section: Section; rows: any[] }) {
 }
 
 function printReceipt(order: any) {
-    const receiptWindow = window.open('', '_blank', 'width=360,height=640');
-    if (!receiptWindow) return;
-    receiptWindow.document.write(
-        `<html><head><title>${order.order_number}</title><style>body{font:12px monospace;width:72mm;margin:8mm auto;color:#111}h2{text-align:center;font-size:15px}.row{display:flex;justify-content:space-between;border-bottom:1px dashed #999;padding:4px 0}.total{font-weight:bold;font-size:14px;margin-top:8px}</style></head><body><h2>AUROZE POS<br/>RESTAURANT POS</h2><p>Order: ${order.order_number}</p>${(order.items ?? [])
-            .map(
-                (item: any) =>
-                    `<div class="row"><span>${item.quantity} x ${item.product?.name ?? 'Item'}</span><span>Rs. ${Number(item.line_total).toFixed(2)}</span></div>`,
-            )
-            .join('')}<div class="row"><span>Subtotal</span><span>Rs. ${Number(order.subtotal ?? 0).toFixed(2)}</span></div><div class="row"><span>Discount</span><span>Rs. ${Number(order.discount ?? 0).toFixed(2)}</span></div><div class="row total"><span>TOTAL</span><span>Rs. ${Number(order.total ?? 0).toFixed(2)}</span></div><p>Payment: ${order.payment?.payment_method ?? 'Paid'}</p><p style="text-align:center;margin-top:18px">Thank you!</p></body></html>`,
-    );
-    receiptWindow.document.close();
-    receiptWindow.print();
+    openReceipt(order);
 }
 
 function ShiftCard({ shift }: { shift: any }) {

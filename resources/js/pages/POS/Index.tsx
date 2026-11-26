@@ -6,8 +6,11 @@ import AppShell from '../../components/layout/AppShell';
 import { FLOOR_POLL_MS } from '../../lib/floorPoll';
 import CashierShiftControl from '../../components/pos/CashierShiftControl';
 import CheckoutPaymentModal from '../../components/pos/CheckoutPaymentModal';
+import MenuCatalog from '../../components/pos/MenuCatalog';
 import PosCategoryNav from '../../components/pos/PosCategoryNav';
+import { canOrderProduct } from '../../lib/menuPrice';
 import { publishCustomerDisplay, type CustomerDisplayItem } from '../../lib/customerDisplay';
+import { openReceipt, prepareReceiptWindow } from '../../lib/receipt';
 import type { Category, Product, RestaurantTable, Shift } from '../../types';
 
 interface Props {
@@ -62,15 +65,14 @@ export default function POS({ categories, products, tables, shift: initialShift 
         void refreshShift();
     }, [isCashier]);
 
-    const filteredProducts = useMemo(
-        () =>
-            products.filter(
-                product =>
-                    (activeCategory == null || Number(product.category_id) === Number(activeCategory)) &&
-                    product.name.toLowerCase().includes(search.toLowerCase()),
-            ),
-        [products, activeCategory, search],
-    );
+    const visibleCount = useMemo(() => {
+        const query = search.trim().toLowerCase();
+        return products.filter(product => {
+            const matchesSearch = !query || `${product.name} ${product.description ?? ''}`.toLowerCase().includes(query);
+            const matchesCategory = activeCategory == null || product.category_id === activeCategory || product.category?.parent_id === activeCategory;
+            return matchesSearch && matchesCategory;
+        }).length;
+    }, [products, activeCategory, search]);
 
     const activeCategoryName = activeCategory
         ? categories.find(c => c.id === activeCategory)?.name ?? 'Category'
@@ -96,12 +98,18 @@ export default function POS({ categories, products, tables, shift: initialShift 
         const paid = Number(received);
         return Number.isFinite(paid) && paid >= total ? paid - total : 0;
     }, [paymentMethod, received, total]);
-    const addToCart = (product: Product) => setCart(current => current.some(item => item.id === product.id) ? current.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item) : [...current, { ...product, quantity: 1 }]);
+    const addToCart = (product: Product) => {
+        if (!canOrderProduct(product)) {
+            setNotice(product.price_label || 'Price to be confirmed.');
+            return;
+        }
+        setCart(current => current.some(item => item.id === product.id) ? current.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item) : [...current, { ...product, quantity: 1 }]);
+    };
 
     const displayItems = useMemo<CustomerDisplayItem[]>(() => (
         billOrder
             ? (billOrder.items ?? []).map((item: { product?: { name?: string }; quantity: number; line_total: number | string }) => ({
-                name: item.product?.name ?? 'Item',
+                name: item.product?.name ?? item.product_name ?? 'Item',
                 quantity: Number(item.quantity),
                 lineTotal: Number(item.line_total),
             }))
@@ -194,21 +202,8 @@ export default function POS({ categories, products, tables, shift: initialShift 
     }, []);
     const changeQuantity = (id: number, amount: number) => setCart(current => current.map(item => item.id === id ? { ...item, quantity: item.quantity + amount } : item).filter(item => item.quantity > 0));
 
-    function printReceipt(order: any) {
-        const receiptWindow = window.open('', '_blank', 'width=360,height=640');
-        if (!receiptWindow) return;
-        const pay = order.payment;
-        const changeRow = pay?.payment_method === 'CASH' && Number(pay.change_amount) > 0
-            ? `<div class="row"><span>Change</span><span>${money(Number(pay.change_amount))}</span></div>`
-            : '';
-        const customerLine = order.order_type === 'TAKEAWAY' && order.customer?.phone
-            ? `<p>Customer: ${order.customer.phone}</p>`
-            : '';
-        const tableLine = order.table?.name ? `<p>Table: ${order.table.name}</p>` : '';
-        const serverLine = order.server?.name ? `<p>Server: ${order.server.name}</p>` : '';
-        receiptWindow.document.write(`<html><head><title>${order.order_number}</title><style>body{font:12px monospace;width:72mm;margin:8mm auto;color:#111}h2{text-align:center;font-size:15px}p{margin:5px 0}.row{display:flex;justify-content:space-between;border-bottom:1px dashed #999;padding:4px 0}.total{font-weight:bold;font-size:14px;margin-top:8px}</style></head><body><h2>AUROZE POS<br/>RESTAURANT POS</h2><p>Order: ${order.order_number}</p>${tableLine}${serverLine}${customerLine}${order.items.map((item: any) => `<div class="row"><span>${item.quantity} x ${item.product.name}</span><span>${money(Number(item.line_total))}</span></div>`).join('')}<div class="row"><span>Subtotal</span><span>${money(Number(order.subtotal))}</span></div><div class="row"><span>Discount</span><span>${money(Number(order.discount))}</span></div><div class="row total"><span>TOTAL</span><span>${money(Number(order.total))}</span></div>${changeRow}<p>Payment: ${pay?.payment_method ?? 'Unpaid'}</p><p style="text-align:center;margin-top:18px">Thank you!</p></body></html>`);
-        receiptWindow.document.close();
-        receiptWindow.print();
+    function printReceipt(order: any, receiptWindow?: Window | null) {
+        openReceipt(order, receiptWindow);
     }
 
     function openCheckout() {
@@ -248,6 +243,21 @@ export default function POS({ categories, products, tables, shift: initialShift 
             setNotice('Cash received must cover the total.');
             return;
         }
+        const receiptWindow = prepareReceiptWindow();
+        const receiptNow = {
+            created_at: billOrder?.created_at ?? new Date().toISOString(),
+            subtotal,
+            discount,
+            total,
+            items: billOrder
+                ? (billOrder.items ?? [])
+                : cart.map(item => ({
+                    quantity: item.quantity,
+                    product_name: item.name,
+                    line_total: Number(item.price) * item.quantity,
+                })),
+        };
+        printReceipt(receiptNow, receiptWindow);
         setBusy(true);
         try {
             if (billOrder) {
@@ -255,7 +265,6 @@ export default function POS({ categories, products, tables, shift: initialShift 
                     discount,
                     payment: { method: paymentMethod, received_amount: cashReceived },
                 });
-                printReceipt(response.data);
                 showPaidOnCustomerDisplay(Number(response.data.total ?? chargeTotal), response.data.table?.name ? `Table ${response.data.table.name}` : 'Table bill');
                 setBillOrder(null);
                 setDiscountInput('');
@@ -275,7 +284,6 @@ export default function POS({ categories, products, tables, shift: initialShift 
                 items: cart.map(item => ({ product_id: item.id, quantity: item.quantity, notes: item.notes })),
                 payment: { method: paymentMethod, received_amount: cashReceived },
             });
-            printReceipt(response.data);
             showPaidOnCustomerDisplay(Number(response.data.total ?? chargeTotal), orderType === 'TAKEAWAY' ? 'Takeaway' : displayLabel);
             setCart([]);
             setDiscountInput('');
@@ -344,7 +352,7 @@ export default function POS({ categories, products, tables, shift: initialShift 
                                     <Search className="absolute left-3 top-3.5 text-slate-400" size={16} />
                                     <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search menu..." className="min-h-11 w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-[#d97745]" />
                                 </div>
-                                <span className="hidden shrink-0 text-[11px] text-slate-400 sm:inline">{filteredProducts.length} items</span>
+                                <span className="hidden shrink-0 text-[11px] text-slate-400 sm:inline">{visibleCount} items</span>
                             </div>
                             <div className="lg:hidden">
                                 <PosCategoryNav
@@ -357,17 +365,14 @@ export default function POS({ categories, products, tables, shift: initialShift 
                             </div>
                             <p className="mb-2 hidden text-xs font-semibold text-slate-500 lg:block">{activeCategoryName}</p>
                             <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                                    {filteredProducts.map(product => (
-                                        <button key={product.id} onClick={() => addToCart(product)} className="group flex min-h-14 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition duration-150 hover:border-[#d97745] hover:shadow-md active:scale-[0.98]">
-                                            <span className="min-w-0">
-                                                <span className="block truncate text-[13px] font-semibold text-slate-800">{product.name}</span>
-                                                <span className="mt-0.5 block text-xs font-medium text-[#d97745]">{money(Number(product.price))}</span>
-                                            </span>
-                                            <Plus size={14} className="shrink-0 text-slate-300 transition group-hover:text-[#d97745]" />
-                                        </button>
-                                    ))}
-                                </div>
+                                <MenuCatalog
+                                    categories={categories}
+                                    products={products}
+                                    activeCategory={activeCategory}
+                                    search={search}
+                                    onAdd={addToCart}
+                                    onBlocked={setNotice}
+                                />
                             </div>
                             </div>
                         </section>
