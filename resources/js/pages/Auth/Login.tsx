@@ -137,7 +137,7 @@ export default function Login() {
                             </form>
 
                             <p className="mt-5 text-center text-xs leading-relaxed text-slate-400 sm:mt-6">
-                                Use the seeded demo accounts to explore the workspace.
+                                Accounts for explore the workspace.
                             </p>
                         </div>
                     </div>
