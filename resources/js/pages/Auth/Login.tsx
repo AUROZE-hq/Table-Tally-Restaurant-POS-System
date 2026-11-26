@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { Head, useForm } from '@inertiajs/react';
-import { LockKeyhole, Mail, ShieldCheck, UserRound, UtensilsCrossed } from 'lucide-react';
+import { Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, UserRound, UtensilsCrossed } from 'lucide-react';
 
 type LoginRole = 'ADMIN' | 'CASHIER' | 'SERVER';
 
@@ -12,6 +12,7 @@ const ROLE_OPTIONS: { id: LoginRole; label: string; icon: typeof UserRound }[] =
 
 export default function Login() {
     const [role, setRole] = useState<LoginRole>('CASHIER');
+    const [showPassword, setShowPassword] = useState(false);
     const { data, setData, post, processing, errors } = useForm({
         email: '',
         password: '',
@@ -92,11 +93,19 @@ export default function Login() {
                                         <input
                                             value={data.password}
                                             onChange={e => setData('password', e.target.value)}
-                                            type="password"
+                                            type={showPassword ? 'text' : 'password'}
                                             autoComplete="current-password"
-                                            className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-3 text-base outline-none focus:border-[#d97745] sm:text-sm"
+                                            className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-12 text-base outline-none focus:border-[#d97745] sm:text-sm"
                                             placeholder="••••••••"
                                         />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(current => !current)}
+                                            className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                            aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                        >
+                                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                        </button>
                                     </div>
                                     {errors.password ? <span className="mt-1 block text-xs text-red-600">{errors.password}</span> : null}
                                 </label>
