@@ -60,6 +60,7 @@ function receiptMarkup(order: any) {
   .row span:first-child { flex: 1; }
   .total { font-size: 14px; font-weight: 700; border-top: 1px solid #111; margin-top: 1mm; padding-top: 1.5mm; }
   .message { margin-top: 4mm; font-size: 13px; font-weight: 700; }
+  .credit { margin: 5mm 0 0; font-size: 9px; letter-spacing: 0.06em; color: #555; }
 </style>
 </head>
 <body>
@@ -79,6 +80,7 @@ function receiptMarkup(order: any) {
   <div class="row"><span>Discount</span><span>${money(Number(order.discount ?? 0))}</span></div>
   <div class="row total"><span>Total bill</span><span>${money(Number(order.total ?? 0))}</span></div>
   <p class="center message">Come again and eat well</p>
+  <p class="center credit">© Developed by Auroze.com</p>
 </body>
 </html>`;
 }
