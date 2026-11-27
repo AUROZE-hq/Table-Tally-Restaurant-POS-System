@@ -15,25 +15,51 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'destroy'])->name('logout');
-    Route::get('/pos', fn () => Inertia::render('POS/Index', [
-        'categories' => Category::where('is_active', true)->orderBy('name')->get(),
-        'products' => Product::with('category')->where('is_available', true)->orderBy('name')->get(),
-        'tables' => RestaurantTable::where('is_active', true)->orderBy('name')->get(),
-        'shift' => fn () => auth()->user()->shifts()->where('status', 'OPEN')->latest()->first(),
-    ]))->name('pos');
+    Route::get('/pos', function () {
+        if (auth()->user()->isServer()) {
+            return redirect()->route('server.floor');
+        }
+
+        return Inertia::render('POS/Index', [
+            'categories' => Category::menuSections(),
+            'products' => Product::menuItems(),
+            'tables' => RestaurantTable::whereRaw('is_active IS TRUE')->orderBy('name')->get(),
+            'shift' => fn () => auth()->user()->shifts()->where('status', 'OPEN')->latest()->first(),
+        ]);
+    })->name('pos');
+
+    Route::get('/customer-display', function () {
+        if (auth()->user()->isServer()) {
+            return redirect()->route('server.floor');
+        }
+
+        return Inertia::render('POS/CustomerDisplay');
+    })->name('customer-display');
+
+    Route::middleware('role:SERVER')->group(function () {
+        Route::get('/server', fn () => Inertia::render('Server/Floor', [
+            'categories' => Category::menuSections(),
+            'products' => Product::menuItems(),
+            'tables' => RestaurantTable::whereRaw('is_active IS TRUE')->orderBy('name')->get(),
+        ]))->name('server.floor');
+    });
 
     Route::middleware('role:CASHIER')->group(function () {
         Route::get('/cashier/{section}', fn (string $section) => Inertia::render('Cashier/Section', [
             'section' => $section,
-        ]))->where('section', 'tables|orders|billing|payments|shift|receipts|customers')->name('cashier.section');
+        ]))->where('section', 'tables|orders|shift|receipts|customers|items')->name('cashier.section');
     });
 
     Route::middleware('role:ADMIN')->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('/admin/{resource}', fn (string $resource) => Inertia::render('Admin/Management', [
             'resource' => $resource,
-        ]))->where('resource', 'products|categories|tables|orders|inventory|expenses|reports|users')->name('admin.resource');
+        ]))->where('resource', 'products|categories|tables|orders|inventory|expenses|reports|users|shift-history')->name('admin.resource');
     });
 
-    Route::get('/', fn () => redirect()->route(auth()->user()->isAdmin() ? 'dashboard' : 'pos'));
+    Route::get('/', fn () => redirect()->route(match (true) {
+        auth()->user()->isAdmin() => 'dashboard',
+        auth()->user()->isServer() => 'server.floor',
+        default => 'pos',
+    }));
 });
