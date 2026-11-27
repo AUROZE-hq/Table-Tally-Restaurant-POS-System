@@ -4,7 +4,7 @@ return [
     'kitchen' => [
         'host' => env('KITCHEN_PRINTER_HOST'),
         'port' => (int) env('KITCHEN_PRINTER_PORT', 9100),
-        'timeout' => (float) env('KITCHEN_PRINTER_TIMEOUT', 4),
+        'timeout' => (float) env('KITCHEN_PRINTER_TIMEOUT', 6),
     ],
     'cash_drawer' => [
         // LAN receipt printer only. Leave empty for the USB till printer on the cashier PC.

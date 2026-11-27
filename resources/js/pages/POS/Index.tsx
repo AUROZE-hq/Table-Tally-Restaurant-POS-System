@@ -296,9 +296,11 @@ export default function POS({ categories, products, tables, shift: initialShift 
             const queueLabel = queue ? ` Queue #${queue}.` : '';
             setNotice(print?.printed
                 ? `Sent to kitchen for ${tableName}.${queueLabel} Ticket printed.`
-                : print?.skipped
-                    ? `Saved for ${tableName}.${queueLabel} Kitchen printer not used.`
-                    : `Sent to kitchen for ${tableName}.${queueLabel}`);
+                : print?.message
+                    ? `Saved for ${tableName}.${queueLabel} ${print.message}`
+                    : print?.skipped
+                        ? `Saved for ${tableName}.${queueLabel} Kitchen printer not used.`
+                        : `Sent to kitchen for ${tableName}.${queueLabel}`);
             await loadFloor();
         } catch (error: any) {
             setNotice(error.response?.data?.message ?? 'Unable to send the order to the kitchen.');

@@ -110,7 +110,9 @@ export default function CashierTableItemsPanel() {
             const queueLabel = queue ? ` Kitchen queue #${queue}.` : '';
             setNotice(print?.printed
                 ? `New items sent to kitchen for ${selected.table?.name ?? 'the table'}.${queueLabel} Ticket printed.`
-                : `Items saved.${queueLabel} Kitchen printer not used.`);
+                : print?.message
+                    ? `Items saved.${queueLabel} ${print.message}`
+                    : `Items saved.${queueLabel} Kitchen printer not used.`);
             await load();
         } catch (error: any) {
             setNotice(error.response?.data?.message ?? 'Unable to send items to the kitchen.');
