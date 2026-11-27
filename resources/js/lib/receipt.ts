@@ -152,10 +152,15 @@ function printInHiddenFrame(html: string): Promise<void> {
 }
 
 export async function openReceipt(order: any, _existing?: Window | null): Promise<void> {
-    if (isCashPayment(order)) {
+    const cash = isCashPayment(order);
+    if (cash) {
         await kickCashDrawerForOrder(order);
     }
 
     const html = receiptMarkup(order);
     await printInHiddenFrame(html);
+
+    if (cash) {
+        await kickCashDrawerForOrder(order);
+    }
 }
