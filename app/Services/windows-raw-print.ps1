@@ -69,25 +69,31 @@ public class EscPosRawPrinter {
 "@
 
 function Resolve-TillPrinter([string]$Name) {
+    $printers = @(Get-CimInstance -ClassName Win32_Printer)
+    $ignored = 'OneNote|PDF|XPS|Fax|AnyDesk|Canon|LBP|Office|Microsoft'
+
     if ($Name) {
-        return $Name
+        $exact = $printers | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
+        if ($exact) {
+            return $exact.Name
+        }
+
+        $partial = $printers | Where-Object { $_.Name -like "*$Name*" } | Select-Object -First 1
+        if ($partial) {
+            return $partial.Name
+        }
     }
 
-    $printers = @(Get-CimInstance -ClassName Win32_Printer)
     $preferred = $printers | Where-Object {
-        $_.Name -match 'POS|Receipt|Thermal|Till|Cash|MUNBYN|Xprinter|XP-|TM-|Birch|80mm|Generic'
+        $_.Name -match 'POS|Receipt|Thermal|Till|Cash|MUNBYN|Xprinter|XP-|TM-|Birch|CP-Q|80mm' -and
+        $_.Name -notmatch $ignored
     } | Select-Object -First 1
 
     if ($preferred) {
         return $preferred.Name
     }
 
-    $default = $printers | Where-Object { $_.Default -eq $true } | Select-Object -First 1
-    if ($default) {
-        return $default.Name
-    }
-
-    throw "No Windows printer found for the USB till drawer."
+    throw "USB till printer not found. Installed printers: $(($printers | ForEach-Object { $_.Name }) -join ', '). Set CASH_DRAWER_PRINTER_NAME to the Windows name (this PC uses POS-80C, not CP-Q1T)."
 }
 
 $target = Resolve-TillPrinter $PrinterName

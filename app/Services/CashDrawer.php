@@ -113,6 +113,6 @@ class CashDrawer
 
     private function printerName(): string
     {
-        return trim((string) config('printing.cash_drawer.printer_name'));
+        return trim((string) config('printing.cash_drawer.printer_name'), " \t\n\r\0\x0B\"'");
     }
 }

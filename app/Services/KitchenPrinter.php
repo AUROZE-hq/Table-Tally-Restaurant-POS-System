@@ -9,35 +9,74 @@ class KitchenPrinter
 {
     public function configured(): bool
     {
-        return trim((string) config('printing.kitchen.host')) !== '';
+        return $this->host() !== '';
     }
 
     public function send(KitchenTicket $ticket): void
     {
-        $host = trim((string) config('printing.kitchen.host'));
+        $host = $this->host();
         $port = (int) config('printing.kitchen.port', 9100);
-        $timeout = (float) config('printing.kitchen.timeout', 4);
+        $timeout = max(1.5, (float) config('printing.kitchen.timeout', 6));
 
         if ($host === '') {
-            throw new RuntimeException('Kitchen printer is not configured.');
+            throw new RuntimeException('Kitchen printer is not configured. Set KITCHEN_PRINTER_HOST on the cashier PC.');
         }
 
+        $payload = $this->payload($ticket);
+        $lastError = 'Kitchen printer unreachable.';
+        $attempts = 3;
+
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            try {
+                $this->writeRaw($host, $port, $timeout, $payload);
+
+                return;
+            } catch (RuntimeException $exception) {
+                $lastError = $exception->getMessage();
+                if ($attempt < $attempts) {
+                    usleep(250000);
+                }
+            }
+        }
+
+        throw new RuntimeException($lastError);
+    }
+
+    private function writeRaw(string $host, int $port, float $timeout, string $payload): void
+    {
         $errno = 0;
         $error = '';
-        $socket = @fsockopen($host, $port, $errno, $error, $timeout);
+        $address = sprintf('tcp://%s:%d', $host, $port);
+        $socket = @stream_socket_client(
+            $address,
+            $errno,
+            $error,
+            $timeout,
+            STREAM_CLIENT_CONNECT,
+        );
+
         if ($socket === false) {
-            throw new RuntimeException($error !== '' ? "Kitchen printer unreachable: {$error}" : 'Kitchen printer unreachable.');
+            $detail = trim($error) !== '' ? $error : 'connection timed out';
+            throw new RuntimeException("Kitchen printer unreachable at {$host}:{$port} ({$detail}). Use the POS on the same LAN as the kitchen printer.");
         }
 
         stream_set_timeout($socket, (int) ceil($timeout));
-        $payload = $this->payload($ticket);
+        stream_set_blocking($socket, true);
+        usleep(80000);
+
         $written = @fwrite($socket, $payload);
+        @fflush($socket);
         $meta = stream_get_meta_data($socket);
         fclose($socket);
 
         if ($written === false || $written < strlen($payload) || ($meta['timed_out'] ?? false)) {
-            throw new RuntimeException('Kitchen printer did not accept the full ticket.');
+            throw new RuntimeException("Kitchen printer at {$host}:{$port} did not accept the full ticket.");
         }
+    }
+
+    private function host(): string
+    {
+        return trim((string) config('printing.kitchen.host'));
     }
 
     private function payload(KitchenTicket $ticket): string

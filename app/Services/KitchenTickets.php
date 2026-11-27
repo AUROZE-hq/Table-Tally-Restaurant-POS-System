@@ -72,32 +72,29 @@ class KitchenTickets
                 'printed' => false,
                 'skipped' => true,
                 'optional' => true,
-                'message' => 'Kitchen printer is not set up. Order saved without printing.',
+                'message' => 'Kitchen printer is not set up. Set KITCHEN_PRINTER_HOST on the cashier PC.',
+            ];
+        }
+
+        $current = KitchenTicket::query()->findOrFail($ticket->id);
+        if ($current->printed_at) {
+            return [
+                'id' => $ticket->id,
+                'printed' => true,
+                'already_printed' => true,
             ];
         }
 
         try {
-            $already = false;
-            DB::transaction(function () use ($ticket, &$already) {
-                $locked = KitchenTicket::query()->lockForUpdate()->findOrFail($ticket->id);
-                if ($locked->printed_at) {
-                    $already = true;
-
-                    return;
-                }
-
-                $locked->load('items');
-                $this->printer->send($locked);
-                $locked->forceFill([
-                    'printed_at' => now(),
-                    'print_error' => null,
-                ])->save();
-            });
+            $this->printer->send($current->load('items'));
+            KitchenTicket::query()->whereKey($ticket->id)->whereNull('printed_at')->update([
+                'printed_at' => now(),
+                'print_error' => null,
+            ]);
 
             return [
                 'id' => $ticket->id,
                 'printed' => true,
-                'already_printed' => $already,
             ];
         } catch (Throwable $exception) {
             KitchenTicket::query()->whereKey($ticket->id)->update([
@@ -109,7 +106,7 @@ class KitchenTickets
                 'printed' => false,
                 'skipped' => true,
                 'optional' => true,
-                'message' => 'Kitchen printer unavailable. Order saved without printing.',
+                'message' => $exception->getMessage(),
             ];
         }
     }
