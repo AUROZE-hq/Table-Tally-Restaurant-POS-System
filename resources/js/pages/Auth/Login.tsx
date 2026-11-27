@@ -1,12 +1,11 @@
 import { FormEvent, useState } from 'react';
 import { Head, useForm } from '@inertiajs/react';
-import { Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, UserRound, UtensilsCrossed } from 'lucide-react';
+import { Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, UserRound } from 'lucide-react';
 
-type LoginRole = 'ADMIN' | 'CASHIER' | 'SERVER';
+type LoginRole = 'ADMIN' | 'CASHIER';
 
 const ROLE_OPTIONS: { id: LoginRole; label: string; icon: typeof UserRound }[] = [
     { id: 'CASHIER', label: 'Cashier', icon: UserRound },
-    { id: 'SERVER', label: 'Server', icon: UtensilsCrossed },
     { id: 'ADMIN', label: 'Admin', icon: ShieldCheck },
 ];
 
@@ -112,7 +111,7 @@ export default function Login() {
 
                                 <div>
                                     <p className="mb-2 text-sm font-medium">Login as</p>
-                                    <div className="grid grid-cols-3 gap-2 max-[380px]:grid-cols-1">
+                                    <div className="grid grid-cols-2 gap-2">
                                         {ROLE_OPTIONS.map(option => {
                                             const Icon = option.icon;
                                             const active = role === option.id;
