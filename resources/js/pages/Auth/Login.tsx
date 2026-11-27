@@ -32,11 +32,11 @@ export default function Login() {
     return (
         <>
             <Head title="Sign in" />
-            <div className="flex min-h-dvh flex-col bg-[#102b2b] pb-8 text-[#102b2b] lg:grid lg:min-h-dvh lg:grid-cols-[1.05fr_0.95fr]">
+            <div data-app-scroll className="flex min-h-dvh flex-col overflow-y-auto bg-[#102b2b] pb-8 text-[#102b2b] lg:grid lg:min-h-dvh lg:grid-cols-[1.05fr_0.95fr]">
                 <section className="hidden flex-col justify-between bg-[#102b2b] p-12 text-white lg:flex">
                     <div className="flex flex-col items-start gap-3">
                         <img src="/images/vavikarai-logo.png" alt="வழிக்கரை" className="h-40 w-40 rounded-3xl bg-white object-contain p-1" />
-                        <span className="text-3xl font-semibold tracking-[0.18em]">VAVIKKARAI</span>
+                        <span className="text-3xl font-semibold tracking-[0.18em]">Vaavikkarai</span>
                     </div>
                     <div>
                         <p className="mb-4 max-w-md text-5xl font-semibold leading-[1.05] tracking-tight">
@@ -55,7 +55,7 @@ export default function Login() {
                     <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center lg:flex-initial">
                         <header className="mb-5 text-center sm:mb-8 lg:mb-8">
                             <img src="/images/vavikarai-logo.png" alt="வழிக்கரை" className="mx-auto h-40 w-40 rounded-3xl bg-white object-contain p-1 shadow-sm sm:h-48 sm:w-48 lg:hidden" />
-                            <h1 className="mt-3 text-3xl font-semibold tracking-[0.12em] sm:mt-4 sm:text-4xl lg:hidden">VAVIKKARAI</h1>
+                            <h1 className="mt-3 text-3xl font-semibold tracking-[0.12em] sm:mt-4 sm:text-4xl lg:hidden">Vaavikkarai</h1>
                             <p className="mx-auto mt-2 max-w-xs text-xs leading-relaxed text-slate-500 lg:hidden">
                                 Sign in on phone or tablet — same workspace as desktop.
                             </p>

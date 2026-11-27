@@ -1,6 +1,6 @@
 import { Link, router, usePage } from '@inertiajs/react';
 import axios from 'axios';
-import { BarChart3, CircleUserRound, History, LayoutDashboard, LogOut, Package, ReceiptText, ShoppingBasket, Table2, Users, UtensilsCrossed } from 'lucide-react';
+import { BarChart3, CircleUserRound, History, LayoutDashboard, ListPlus, LogOut, Package, ReceiptText, ShoppingBasket, Table2, Users, UtensilsCrossed } from 'lucide-react';
 import { FormEvent, useState, type ReactNode } from 'react';
 import type { Shift, User } from '../../types';
 
@@ -87,18 +87,17 @@ export default function AppShell({ children }: PageProps) {
             { label: 'POS', href: '/pos', icon: ShoppingBasket },
             { label: 'Tables', href: '/cashier/tables', icon: Table2 },
             { label: 'Orders', href: '/cashier/orders', icon: ReceiptText },
-            { label: 'Billing', href: '/cashier/billing', icon: ReceiptText },
-            { label: 'Payments', href: '/cashier/payments', icon: ReceiptText },
             { label: 'Shift', href: '/cashier/shift', icon: BarChart3 },
             { label: 'Receipts', href: '/cashier/receipts', icon: ReceiptText },
             { label: 'Customers', href: '/cashier/customers', icon: Users },
+            { label: 'Items', href: '/cashier/items', icon: ListPlus },
         ];
 
     const aside = (
         <aside className="flex w-full shrink-0 flex-col bg-[#102b2b] px-3 py-2.5 text-white lg:h-full lg:w-[188px] lg:px-3 lg:py-3">
             <div className="flex items-center gap-2.5 border-b border-white/10 pb-2.5">
                 <img src="/images/vavikarai-logo.png" alt="வழிக்கரை" className="h-16 w-16 shrink-0 rounded-xl object-contain" />
-                <div className="min-w-0"><p className="truncate text-[13px] font-semibold tracking-wide">VAVIKKARAI</p><p className="text-[10px] text-white/50">Aaniver · Batticaloa</p></div>
+                <div className="min-w-0"><p className="truncate text-[13px] font-semibold tracking-wide">Vaavikkarai</p><p className="text-[10px] text-white/50">Vaavikkarai · Batticaloa</p></div>
             </div>
             <nav className="mt-2 grid grid-cols-2 gap-2 lg:mt-3 lg:block lg:space-y-1.5 lg:overflow-y-auto">
                 {navigation.map(({ label, href, icon: Icon }) => <Link key={label} href={href} className="flex min-h-11 items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] text-white/70 transition duration-150 hover:bg-white/10 hover:text-white"><Icon size={16} className="shrink-0" /><span className="truncate">{label}</span></Link>)}
@@ -124,9 +123,9 @@ export default function AppShell({ children }: PageProps) {
                 </header>
                 <div className="hidden min-h-0 flex-1 lg:flex">
                     {aside}
-                    <main className="h-full min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
+                    <main data-app-scroll className="h-full min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
                 </div>
-                <main className="min-h-0 flex-1 overflow-hidden lg:hidden">{children}</main>
+                <main data-app-scroll className="min-h-0 flex-1 overflow-y-auto lg:hidden">{children}</main>
             </div>
         );
     }
@@ -134,7 +133,7 @@ export default function AppShell({ children }: PageProps) {
     return (
         <div className="h-dvh overflow-hidden bg-[#f5f7f8] pb-8 lg:flex">
             {aside}
-            <main className="h-full min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
+            <main data-app-scroll className="h-full min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
             {logoutShiftModal && openShift && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#102b2b]/45 p-4">
                     <form onSubmit={closeShiftAndLogout} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">

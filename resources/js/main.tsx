@@ -9,7 +9,16 @@ import TouchKeyboard from './components/ui/TouchKeyboard';
 
 const pages = import.meta.glob('./pages/**/*.tsx', { eager: true }) as Record<string, { default: React.ComponentType }>; 
 
+const APP_TITLE = 'Vaavikkarai-POS';
+
 createInertiaApp({
+    title: (title) => {
+        if (!title || title === APP_TITLE) {
+            return APP_TITLE;
+        }
+
+        return `${title} · ${APP_TITLE}`;
+    },
     resolve: (name) => {
         const page = pages[`./pages/${name}.tsx`];
 

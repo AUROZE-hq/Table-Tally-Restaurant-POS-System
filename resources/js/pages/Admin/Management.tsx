@@ -596,8 +596,25 @@ interface PaginatedMeta {
     to: number | null;
 }
 
-function PaginationBar({ meta, page, onPageChange, entityLabel = 'records' }: { meta: PaginatedMeta; page: number; onPageChange: (page: number) => void; entityLabel?: string }) {
-    if (meta.last_page <= 1) {
+function PaginationBar({
+    meta,
+    page,
+    onPageChange,
+    entityLabel = 'records',
+    perPage,
+    onPerPageChange,
+    perPageOptions = [10, 25, 50],
+}: {
+    meta: PaginatedMeta;
+    page: number;
+    onPageChange: (page: number) => void;
+    entityLabel?: string;
+    perPage?: number;
+    onPerPageChange?: (perPage: number) => void;
+    perPageOptions?: number[];
+}) {
+    const showNav = meta.last_page > 1;
+    if (meta.total <= 0 && !showNav) {
         return null;
     }
 
@@ -610,37 +627,58 @@ function PaginationBar({ meta, page, onPageChange, entityLabel = 'records' }: { 
 
     return (
         <div className="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-slate-500">
-                Showing {meta.from ?? 0}–{meta.to ?? 0} of {meta.total} {entityLabel}
-            </p>
-            <div className="flex flex-wrap items-center gap-1">
-                <button
-                    type="button"
-                    disabled={page <= 1}
-                    onClick={() => onPageChange(page - 1)}
-                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 disabled:opacity-40"
-                >
-                    Previous
-                </button>
-                {pages.map(p => (
-                    <button
-                        key={p}
-                        type="button"
-                        onClick={() => onPageChange(p)}
-                        className={`min-w-[2.25rem] rounded-lg px-2 py-1.5 text-xs font-bold ${p === page ? 'bg-[#102b2b] text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                    >
-                        {p}
-                    </button>
-                ))}
-                <button
-                    type="button"
-                    disabled={page >= meta.last_page}
-                    onClick={() => onPageChange(page + 1)}
-                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 disabled:opacity-40"
-                >
-                    Next
-                </button>
+            <div className="flex flex-wrap items-center gap-3">
+                <p className="text-sm text-slate-500">
+                    Showing {meta.from ?? 0}–{meta.to ?? 0} of {meta.total} {entityLabel}
+                    {showNav ? ` · Page ${meta.current_page} of ${meta.last_page}` : ''}
+                </p>
+                {onPerPageChange && perPage != null ? (
+                    <label className="flex items-center gap-2 text-sm text-slate-500">
+                        <span>Per page</span>
+                        <select
+                            value={perPage}
+                            onChange={event => onPerPageChange(Number(event.target.value))}
+                            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-[#d97745]"
+                        >
+                            {perPageOptions.map(option => (
+                                <option key={option} value={option}>
+                                    {option}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                ) : null}
             </div>
+            {showNav ? (
+                <div className="flex flex-wrap items-center gap-1">
+                    <button
+                        type="button"
+                        disabled={page <= 1}
+                        onClick={() => onPageChange(page - 1)}
+                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 disabled:opacity-40"
+                    >
+                        Previous
+                    </button>
+                    {pages.map(p => (
+                        <button
+                            key={p}
+                            type="button"
+                            onClick={() => onPageChange(p)}
+                            className={`min-w-[2.25rem] rounded-lg px-2 py-1.5 text-xs font-bold ${p === page ? 'bg-[#102b2b] text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                        >
+                            {p}
+                        </button>
+                    ))}
+                    <button
+                        type="button"
+                        disabled={page >= meta.last_page}
+                        onClick={() => onPageChange(page + 1)}
+                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 disabled:opacity-40"
+                    >
+                        Next
+                    </button>
+                </div>
+            ) : null}
         </div>
     );
 }
@@ -1530,7 +1568,7 @@ function UserForm({ onCreated, onError }: { onCreated: () => void; onError: (mes
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [role, setRole] = useState<UserRow['role']>('SERVER');
+    const [role, setRole] = useState<UserRow['role']>('CASHIER');
     const [busy, setBusy] = useState(false);
 
     async function submit(event: FormEvent) {
@@ -1541,7 +1579,7 @@ function UserForm({ onCreated, onError }: { onCreated: () => void; onError: (mes
             setName('');
             setEmail('');
             setPassword('');
-            setRole('SERVER');
+            setRole('CASHIER');
             onCreated();
         } catch (error: any) {
             onError(apiErrorMessage(error, 'Unable to create user.'));
@@ -1554,7 +1592,7 @@ function UserForm({ onCreated, onError }: { onCreated: () => void; onError: (mes
         <form onSubmit={submit} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
             <div className="mb-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#d97745]">Staff accounts</p>
-                <h2 className="mt-1 text-lg font-semibold">Add admin, cashier, or server login</h2>
+                <h2 className="mt-1 text-lg font-semibold">Add admin or cashier login</h2>
                 <p className="mt-1 text-sm text-slate-500">Password must be at least 8 characters. Each person signs in with their email, password, and role.</p>
             </div>
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
@@ -1562,7 +1600,6 @@ function UserForm({ onCreated, onError }: { onCreated: () => void; onError: (mes
                 <input required type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="Email" className="rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none focus:border-[#d97745]" />
                 <input required minLength={8} type="password" value={password} onChange={event => setPassword(event.target.value)} placeholder="Password (min 8)" className="rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none focus:border-[#d97745]" />
                 <select value={role} onChange={event => setRole(event.target.value as UserRow['role'])} className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm">
-                    <option value="SERVER">SERVER</option>
                     <option value="CASHIER">CASHIER</option>
                     <option value="ADMIN">ADMIN</option>
                 </select>
@@ -1620,7 +1657,7 @@ function UserEditModal({ user, onClose, onSaved, onError }: { user: UserRow; onC
                     <input required type="email" value={email} onChange={event => setEmail(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none focus:border-[#d97745]" />
                     <input type="password" minLength={8} value={password} onChange={event => setPassword(event.target.value)} placeholder="New password (leave blank to keep)" className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none focus:border-[#d97745]" />
                     <select value={role} onChange={event => setRole(event.target.value as UserRow['role'])} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm">
-                        <option value="SERVER">SERVER</option>
+                        {user.role === 'SERVER' ? <option value="SERVER">SERVER</option> : null}
                         <option value="CASHIER">CASHIER</option>
                         <option value="ADMIN">ADMIN</option>
                     </select>
@@ -1659,6 +1696,7 @@ const formatShiftWhen = (value: string | null | undefined) =>
 function ShiftHistoryPanel({ search, onNotice }: { search: string; onNotice: (message: string) => void }) {
     const [rows, setRows] = useState<ShiftHistoryRow[]>([]);
     const [page, setPage] = useState(1);
+    const [perPage, setPerPage] = useState(10);
     const [loading, setLoading] = useState(true);
     const [meta, setMeta] = useState<PaginatedMeta>({
         current_page: 1,
@@ -1675,7 +1713,7 @@ function ShiftHistoryPanel({ search, onNotice }: { search: string; onNotice: (me
             .get('/api/shift-history', {
                 params: {
                     page,
-                    per_page: 10,
+                    per_page: perPage,
                     search: search.trim() || undefined,
                 },
             })
@@ -1692,11 +1730,11 @@ function ShiftHistoryPanel({ search, onNotice }: { search: string; onNotice: (me
             })
             .catch(() => onNotice('Unable to load shift history.'))
             .finally(() => setLoading(false));
-    }, [page, search, onNotice]);
+    }, [page, perPage, search, onNotice]);
 
     useEffect(() => {
         setPage(1);
-    }, [search]);
+    }, [search, perPage]);
 
     useEffect(() => {
         void load();
@@ -1705,7 +1743,7 @@ function ShiftHistoryPanel({ search, onNotice }: { search: string; onNotice: (me
     return (
         <div className="space-y-4">
             <p className="text-sm text-slate-500">
-                Cashier shift on/off times with opening and closing cash in the box (10 per page).
+                Cashier shift on/off times with opening and closing cash in the drawer. Use the pager below when you have more than one page.
             </p>
             <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
                 <div className="overflow-x-auto">
@@ -1775,7 +1813,17 @@ function ShiftHistoryPanel({ search, onNotice }: { search: string; onNotice: (me
                         <p className="p-10 text-center text-sm text-slate-400">No shift records found.</p>
                     )}
                 </div>
-                <PaginationBar meta={meta} page={page} onPageChange={setPage} entityLabel="shifts" />
+                <PaginationBar
+                    meta={meta}
+                    page={page}
+                    onPageChange={setPage}
+                    entityLabel="shifts"
+                    perPage={perPage}
+                    onPerPageChange={value => {
+                        setPerPage(value);
+                        setPage(1);
+                    }}
+                />
             </div>
         </div>
     );

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 type Field = HTMLInputElement | HTMLTextAreaElement;
 type Mode = 'text' | 'number';
@@ -76,6 +76,64 @@ function insertAtCaret(field: Field, text: string) {
         if (field.isConnected) {
             field.setSelectionRange(caret, caret);
         }
+    });
+}
+
+const SCROLL_REGIONS = '[data-app-scroll]';
+
+function scrollPaddingTargets(): HTMLElement[] {
+    return [...document.querySelectorAll(SCROLL_REGIONS)].filter((node): node is HTMLElement => node instanceof HTMLElement);
+}
+
+function clearKeyboardScrollPadding() {
+    scrollPaddingTargets().forEach((region) => {
+        region.style.removeProperty('padding-bottom');
+        region.style.removeProperty('scroll-padding-bottom');
+    });
+}
+
+function scrollableAncestor(node: HTMLElement | null): HTMLElement | null {
+    let parent = node?.parentElement ?? null;
+    while (parent) {
+        const style = window.getComputedStyle(parent);
+        const scrollable = /(auto|scroll)/.test(style.overflowY) && parent.scrollHeight > parent.clientHeight + 1;
+        if (scrollable) {
+            return parent;
+        }
+        parent = parent.parentElement;
+    }
+
+    return null;
+}
+
+function ensureFieldAboveKeyboard(field: Field, keyboardTop: number) {
+    const margin = 20;
+    const limit = keyboardTop - margin;
+    const rect = field.getBoundingClientRect();
+    if (rect.bottom <= limit && rect.top >= margin) {
+        return;
+    }
+
+    if (rect.bottom > limit) {
+        const delta = rect.bottom - limit;
+        const region = scrollableAncestor(field);
+        if (region) {
+            region.scrollBy({ top: delta, behavior: 'smooth' });
+        } else {
+            window.scrollBy({ top: delta, behavior: 'smooth' });
+        }
+    } else if (rect.top < margin) {
+        const delta = rect.top - margin;
+        const region = scrollableAncestor(field);
+        if (region) {
+            region.scrollBy({ top: delta, behavior: 'smooth' });
+        } else {
+            window.scrollBy({ top: delta, behavior: 'smooth' });
+        }
+    }
+
+    window.requestAnimationFrame(() => {
+        field.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
     });
 }
 
@@ -169,24 +227,48 @@ export default function TouchKeyboard() {
         };
     }, []);
 
-    useEffect(() => {
-        const page = document.querySelector('[data-page]');
-        if (!(page instanceof HTMLElement)) {
-            return;
-        }
+    useLayoutEffect(() => {
         if (!open) {
-            page.style.transform = '';
+            clearKeyboardScrollPadding();
             return;
         }
+
         const field = fieldRef.current;
         const panel = panelRef.current;
         if (!field || !panel) {
             return;
         }
-        const rect = field.getBoundingClientRect();
-        const limit = panel.getBoundingClientRect().top - 12;
-        const overlap = rect.bottom - limit;
-        page.style.transform = overlap > 0 ? `translateY(-${Math.ceil(overlap)}px)` : '';
+
+        const keyboardTop = panel.getBoundingClientRect().top;
+        const reserve = window.innerHeight - keyboardTop + 12;
+
+        scrollPaddingTargets().forEach((region) => {
+            region.style.paddingBottom = `${reserve}px`;
+            region.style.scrollPaddingBottom = `${reserve}px`;
+        });
+
+        ensureFieldAboveKeyboard(field, keyboardTop);
+    }, [open, mode]);
+
+    useEffect(() => {
+        if (!open) {
+            return;
+        }
+
+        const field = fieldRef.current;
+        const panel = panelRef.current;
+        if (!field || !panel) {
+            return;
+        }
+
+        const repeat = () => ensureFieldAboveKeyboard(field, panel.getBoundingClientRect().top);
+        const timer = window.setTimeout(repeat, 120);
+        const onResize = () => repeat();
+        window.addEventListener('resize', onResize);
+        return () => {
+            window.clearTimeout(timer);
+            window.removeEventListener('resize', onResize);
+        };
     }, [open, mode]);
 
     function press(key: string) {
@@ -232,7 +314,7 @@ export default function TouchKeyboard() {
     return (
         <div
             ref={panelRef}
-            className="fixed inset-x-0 bottom-8 z-[90] border-t border-[#102b2b]/10 bg-[#e7eeea] px-2 py-2 shadow-[0_-8px_24px_rgba(16,43,43,0.12)]"
+            className="fixed inset-x-0 bottom-8 z-[85] border-t border-[#102b2b]/10 bg-[#e7eeea] px-2 py-2 shadow-[0_-8px_24px_rgba(16,43,43,0.12)]"
             role="group"
             aria-label="Touch keyboard"
         >

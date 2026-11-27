@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\CashDrawerController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\CustomerController;
@@ -26,11 +27,17 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::get('floor', [OrderController::class, 'floor']);
     Route::get('orders/history', [OrderController::class, 'history']);
     Route::get('orders/mine', [OrderController::class, 'serverHistory']);
+    Route::post('orders/kitchen', [OrderController::class, 'sendToKitchen']);
+    Route::post('orders/{order}/kitchen-ready', [OrderController::class, 'kitchenReady']);
+    Route::post('orders/{order}/kitchen-tickets/print', [OrderController::class, 'printKitchenTickets']);
+    Route::post('kitchen-tickets/{ticket}/print', [OrderController::class, 'printKitchenTicket']);
     Route::post('orders/{order}/ready', [OrderController::class, 'ready']);
     Route::post('orders/{order}/bill', [OrderController::class, 'bill']);
     Route::post('orders/{order}/complete', [OrderController::class, 'complete']);
     Route::post('orders/{order}/paid', [OrderController::class, 'paid']);
     Route::apiResource('orders', OrderController::class)->only(['index', 'store', 'show']);
+    Route::post('cash-drawer/kick', [CashDrawerController::class, 'kick']);
+
     Route::get('shift/current', [ShiftController::class, 'current']);
     Route::post('shift', [ShiftController::class, 'store']);
     Route::post('shift/{shift}/close', [ShiftController::class, 'close']);

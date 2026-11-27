@@ -32,7 +32,7 @@ class DatabaseSeeder extends Seeder
             'is_active' => true,
         ]);
 
-        $this->call(AaniverMenuSeeder::class);
+        $this->call(VaavikkaraiMenuSeeder::class);
 
         foreach (range(1, 6) as $number) {
             RestaurantTable::updateOrCreate(['name' => sprintf('Table %02d', $number)], [

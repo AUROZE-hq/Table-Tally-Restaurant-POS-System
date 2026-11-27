@@ -21,7 +21,7 @@ class UserController extends Controller
             'name' => ['required', 'string', 'max:120'],
             'email' => ['required', 'email', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8'],
-            'role' => ['required', 'in:ADMIN,CASHIER,SERVER'],
+            'role' => ['required', 'in:ADMIN,CASHIER'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
