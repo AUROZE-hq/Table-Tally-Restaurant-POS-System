@@ -1,9 +1,11 @@
+import { isCashPayment, kickCashDrawerForOrder } from './cashDrawer';
+
 const RESTAURANT = {
-    name: 'Aaniver Restaurant',
+    name: 'Vaavikkarai Restaurant',
     address: '34/4, Kannakai amman Road, Poombukar, Batticaloa',
     phone: '071 696 9949',
     website: 'www.aaniver.lk',
-    logo: '/images/vavikarai-logo.png',
+    logo: '/images/vaavikkarai-receipt-logo.jpg',
 };
 
 if (typeof window !== 'undefined') {
@@ -52,9 +54,10 @@ function receiptMarkup(order: any) {
   html, body { width: 80mm; margin: 0; padding: 0; }
   body { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 12px; padding: 2mm; }
   .center { text-align: center; }
-  img { width: 28mm; height: 28mm; object-fit: contain; }
-  h1 { margin: 1mm 0 0; font-size: 15px; letter-spacing: 0.04em; }
+  img.logo { width: 64mm; max-width: 100%; height: auto; object-fit: contain; }
+  h1 { margin: 1mm 0 0; font-size: 17px; letter-spacing: 0.04em; }
   .muted { margin: 0.5mm 0; font-size: 11px; }
+  .contact { margin: 1mm 0; font-size: 14px; line-height: 1.35; font-weight: 600; }
   .rule { border: 0; border-top: 1px dashed #222; margin: 2.5mm 0; }
   .row { display: flex; justify-content: space-between; gap: 3mm; padding: 1mm 0; font-size: 12px; }
   .row span:first-child { flex: 1; }
@@ -65,11 +68,11 @@ function receiptMarkup(order: any) {
 </head>
 <body>
   <div class="center">
-    <img src="${logo}" alt="Aaniver" />
+    <img class="logo" src="${logo}" alt="Vaavikkarai" />
     <h1>${escapeHtml(RESTAURANT.name)}</h1>
-    <p class="muted">${escapeHtml(RESTAURANT.address)}</p>
-    <p class="muted">${escapeHtml(RESTAURANT.phone)}</p>
-    <p class="muted">${escapeHtml(RESTAURANT.website)}</p>
+    <p class="contact">${escapeHtml(RESTAURANT.address)}</p>
+    <p class="contact">${escapeHtml(RESTAURANT.phone)}</p>
+    <p class="contact">${escapeHtml(RESTAURANT.website)}</p>
   </div>
   <hr class="rule" />
   <p class="center muted">${escapeHtml(purchasedAt(order))}</p>
@@ -85,61 +88,74 @@ function receiptMarkup(order: any) {
 </html>`;
 }
 
+/** @deprecated No visible preview window; kept so existing call sites stay valid. */
 export function prepareReceiptWindow(): Window | null {
-    const popup = window.open('', 'aaniver-bill', 'width=360,height=720');
-    if (!popup) {
-        return null;
-    }
-    popup.document.open();
-    popup.document.write('<!DOCTYPE html><title>Bill</title><p style="font-family:Arial,sans-serif;padding:24px">Preparing bill…</p>');
-    popup.document.close();
-    popup.focus();
-    return popup;
+    return null;
 }
 
-function writeAndPrint(target: Window, html: string) {
-    target.document.open();
-    target.document.write(html);
-    target.document.close();
-    const printNow = () => {
-        if (target.closed) {
+function whenPrinted(target: Window, start: () => void): Promise<void> {
+    return new Promise(resolve => {
+        let settled = false;
+        const finish = () => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            resolve();
+        };
+        target.onafterprint = finish;
+        start();
+        window.setTimeout(finish, 2500);
+    });
+}
+
+function waitForReceiptAssets(win: Window): Promise<void> {
+    return new Promise(resolve => {
+        const logo = win.document.querySelector('img.logo');
+        if (!(logo instanceof HTMLImageElement) || logo.complete) {
+            window.requestAnimationFrame(() => resolve());
             return;
         }
-        target.focus();
-        target.print();
-    };
-    if (typeof target.requestAnimationFrame === 'function') {
-        target.requestAnimationFrame(printNow);
-        return;
-    }
-    printNow();
+        const done = () => resolve();
+        logo.addEventListener('load', done, { once: true });
+        logo.addEventListener('error', done, { once: true });
+        window.setTimeout(done, 600);
+    });
 }
 
-export function openReceipt(order: any, existing?: Window | null) {
-    const html = receiptMarkup(order);
-    const popup = existing && !existing.closed
-        ? existing
-        : window.open('', 'aaniver-bill', 'width=360,height=720');
-
-    if (popup) {
-        writeAndPrint(popup, html);
-        return;
-    }
-
+function printInHiddenFrame(html: string): Promise<void> {
     const frame = document.createElement('iframe');
     frame.setAttribute('title', 'Bill');
-    frame.style.cssText = 'position:fixed;left:0;top:0;width:80mm;height:100vh;border:0;background:#fff;z-index:80;';
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.cssText = 'position:fixed;width:0;height:0;left:-9999px;top:0;border:0;opacity:0;pointer-events:none;';
+
     document.body.appendChild(frame);
     const doc = frame.contentDocument;
     const win = frame.contentWindow;
     if (!doc || !win) {
         frame.remove();
-        return;
+        return Promise.resolve();
     }
+
     doc.open();
     doc.write(html);
     doc.close();
-    win.onafterprint = () => frame.remove();
-    win.focus();
-    win.print();
+
+    return waitForReceiptAssets(win)
+        .then(() => whenPrinted(win, () => {
+            win.focus();
+            win.print();
+        }))
+        .finally(() => {
+            window.setTimeout(() => frame.remove(), 300);
+        });
+}
+
+export async function openReceipt(order: any, _existing?: Window | null): Promise<void> {
+    if (isCashPayment(order)) {
+        await kickCashDrawerForOrder(order);
+    }
+
+    const html = receiptMarkup(order);
+    await printInHiddenFrame(html);
 }

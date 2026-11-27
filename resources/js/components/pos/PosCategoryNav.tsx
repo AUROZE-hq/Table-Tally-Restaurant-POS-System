@@ -10,7 +10,7 @@ const SHORT_LABELS: Record<string, string> = {
     'Pittu & Idiyappam Bar': 'Pittu bar',
     'Curries & Accompaniments': 'Curries',
     'Healthy Starters & Light Bites': 'Starters',
-    'Aaniver Wellness Meals': 'Wellness',
+    'Vaavikkarai Wellness Meals': 'Wellness',
     'Special Orders & Beverages': 'Specials',
 };
 
@@ -20,7 +20,7 @@ const ACCENT: Record<string, string> = {
     'Pittu & Idiyappam Bar': 'bg-orange-100 text-orange-900 ring-orange-200',
     'Curries & Accompaniments': 'bg-rose-100 text-rose-900 ring-rose-200',
     'Healthy Starters & Light Bites': 'bg-lime-100 text-lime-900 ring-lime-200',
-    'Aaniver Wellness Meals': 'bg-teal-100 text-teal-900 ring-teal-200',
+    'Vaavikkarai Wellness Meals': 'bg-teal-100 text-teal-900 ring-teal-200',
     'Special Orders & Beverages': 'bg-sky-100 text-sky-900 ring-sky-200',
 };
 
@@ -43,7 +43,7 @@ function timeSuggestedNames(hour: number): string[] {
         return ['Breakfast', 'Special Orders & Beverages'];
     }
     if (hour < 15) {
-        return ['Traditional Lunch', 'Aaniver Wellness Meals', 'Healthy Starters & Light Bites', 'Curries & Accompaniments'];
+        return ['Traditional Lunch', 'Vaavikkarai Wellness Meals', 'Healthy Starters & Light Bites', 'Curries & Accompaniments'];
     }
 
     return ['Pittu & Idiyappam Bar', 'Traditional Lunch', 'Special Orders & Beverages'];

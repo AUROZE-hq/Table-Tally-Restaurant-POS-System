@@ -3,9 +3,10 @@ import axios from 'axios';
 import { Head, Link } from '@inertiajs/react';
 import { ArrowLeft, Banknote, ClipboardList, CreditCard, Phone, Printer, ReceiptText, ShoppingBag, Table2, Users } from 'lucide-react';
 import AppShell from '../../components/layout/AppShell';
+import CashierTableItemsPanel from './TableItemsPanel';
 import { openReceipt } from '../../lib/receipt';
 
-type Section = 'tables' | 'orders' | 'billing' | 'payments' | 'shift' | 'receipts' | 'customers';
+type Section = 'tables' | 'orders' | 'shift' | 'receipts' | 'customers' | 'items';
 type OrderFilter = 'all' | 'cash' | 'card' | 'paid';
 type CustomerFilter = 'all' | 'phone' | 'repeat';
 
@@ -16,11 +17,10 @@ interface Props {
 const titles: Record<Section, string> = {
     tables: 'Tables',
     orders: 'Orders',
-    billing: 'Billing',
-    payments: 'Payments',
     shift: 'Shift',
     receipts: 'Receipts',
     customers: 'Customers',
+    items: 'Items',
 };
 
 const money = (value: number) =>
@@ -73,7 +73,7 @@ export default function Section({ section }: Props) {
                 .catch(() => setError('Unable to load shift.'));
             return;
         }
-        if (section === 'orders' || section === 'receipts' || section === 'customers') {
+        if (section === 'orders' || section === 'receipts' || section === 'customers' || section === 'items') {
             return;
         }
         axios
@@ -92,26 +92,17 @@ export default function Section({ section }: Props) {
                             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#d97745]">Cashier workspace</p>
                             <h1 className="mt-1 text-2xl font-semibold tracking-tight">{titles[section]}</h1>
                         </div>
-                        {section === 'billing' || section === 'payments' ? (
-                            <Link href="/pos" className="rounded-xl bg-[#d97745] px-4 py-3 text-sm font-semibold text-white">
-                                Open POS
-                            </Link>
-                        ) : null}
                     </header>
                     <div className="space-y-6 p-5 lg:p-8">
                         {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{error}</p>}
                         {section === 'shift' ? (
                             <ShiftCard shift={shift} />
-                        ) : section === 'billing' || section === 'payments' ? (
-                            <EmptyAction
-                                title={section === 'billing' ? 'Ready to bill' : 'Payment methods'}
-                                text="Select an order in the POS to continue checkout and payment."
-                                icon={section === 'billing' ? ReceiptText : CreditCard}
-                            />
                         ) : section === 'receipts' ? (
                             <CashierReceiptsPanel />
                         ) : section === 'orders' ? (
                             <CashierOrdersPanel />
+                        ) : section === 'items' ? (
+                            <CashierTableItemsPanel />
                         ) : section === 'customers' ? (
                             <CashierCustomersPanel />
                         ) : (
@@ -131,6 +122,7 @@ function CashierOrdersPanel() {
     const [page, setPage] = useState(1);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [retryingId, setRetryingId] = useState<number | null>(null);
     const [meta, setMeta] = useState<PaginatedMeta>({
         current_page: 1,
         last_page: 1,
@@ -174,6 +166,19 @@ function CashierOrdersPanel() {
     useEffect(() => {
         void load();
     }, [load]);
+
+    async function retryKitchen(orderId: number) {
+        setRetryingId(orderId);
+        setError('');
+        try {
+            await axios.post(`/api/orders/${orderId}/kitchen-tickets/print`);
+            await load();
+        } catch (retryError: any) {
+            setError(retryError.response?.data?.message ?? 'The kitchen printer did not print. The order is still saved.');
+        } finally {
+            setRetryingId(null);
+        }
+    }
 
     function paymentLabel(order: any): string {
         if (order.payment?.payment_method) {
@@ -233,6 +238,11 @@ function CashierOrdersPanel() {
                                             {' · '}
                                             {row.created_at ? new Date(row.created_at).toLocaleString('en-LK') : ''}
                                         </p>
+                                        {(row.items ?? []).length > 0 && (
+                                            <p className="mt-1 line-clamp-2 text-xs text-slate-500">
+                                                {(row.items ?? []).map((item: any) => `${item.quantity}× ${item.product?.name ?? item.product_name ?? 'Item'}`).join(' · ')}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2 sm:gap-4">
@@ -245,7 +255,7 @@ function CashierOrdersPanel() {
                                                   : 'bg-slate-100 text-slate-600'
                                         }`}
                                     >
-                                        {row.status}
+                                        {row.status === 'OPEN' ? 'Processing' : row.status}
                                     </span>
                                     <span
                                         className={`inline-flex items-center gap-1 text-xs font-semibold ${
@@ -264,6 +274,16 @@ function CashierOrdersPanel() {
                                         {paymentLabel(row)}
                                     </span>
                                     <span className="text-sm font-semibold text-[#d97745]">{row.total ? money(Number(row.total)) : ''}</span>
+                                    {Number(row.unprinted_kitchen_tickets_count) > 0 && (
+                                        <button
+                                            type="button"
+                                            disabled={retryingId === row.id}
+                                            onClick={() => void retryKitchen(row.id)}
+                                            className="rounded-lg border border-[#d97745] px-2.5 py-1.5 text-[11px] font-bold text-[#b65b2e] disabled:opacity-50"
+                                        >
+                                            {retryingId === row.id ? 'Printing…' : 'Retry kitchen print'}
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         ))
@@ -770,19 +790,6 @@ function ShiftCard({ shift }: { shift: any }) {
             >
                 <ArrowLeft size={16} />
                 Go to POS
-            </Link>
-        </div>
-    );
-}
-
-function EmptyAction({ title, text, icon: Icon }: { title: string; text: string; icon: typeof ReceiptText }) {
-    return (
-        <div className="max-w-lg rounded-2xl bg-white p-8 shadow-sm ring-1 ring-slate-100">
-            <Icon className="text-[#d97745]" size={28} />
-            <h2 className="mt-4 text-xl font-semibold">{title}</h2>
-            <p className="mt-2 text-sm text-slate-500">{text}</p>
-            <Link href="/pos" className="mt-6 inline-block rounded-xl bg-[#d97745] px-4 py-3 text-sm font-semibold text-white">
-                Open POS
             </Link>
         </div>
     );

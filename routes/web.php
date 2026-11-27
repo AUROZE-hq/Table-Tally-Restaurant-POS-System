@@ -47,7 +47,7 @@ Route::middleware('auth')->group(function () {
     Route::middleware('role:CASHIER')->group(function () {
         Route::get('/cashier/{section}', fn (string $section) => Inertia::render('Cashier/Section', [
             'section' => $section,
-        ]))->where('section', 'tables|orders|billing|payments|shift|receipts|customers')->name('cashier.section');
+        ]))->where('section', 'tables|orders|shift|receipts|customers|items')->name('cashier.section');
     });
 
     Route::middleware('role:ADMIN')->group(function () {

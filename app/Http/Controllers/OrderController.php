@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\ActivityLog;
 use App\Models\Customer;
 use App\Models\Inventory;
+use App\Models\KitchenTicket;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\RestaurantTable;
 use App\Models\Shift;
+use App\Services\KitchenTickets;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,13 +27,17 @@ class OrderController extends Controller
         $defaultPerPage = $request->user()->isAdmin() ? 50 : 10;
         $perPage = min(max((int) $request->input('per_page', $defaultPerPage), 1), 50);
 
-        $query = Order::with(['items.product', 'items.server', 'payment', 'table', 'cashier', 'server'])->latest();
+        $query = Order::with(['items.product', 'items.server', 'payment', 'table', 'cashier', 'server'])
+            ->withCount(['kitchenTickets as unprinted_kitchen_tickets_count' => fn ($tickets) => $tickets->whereNull('printed_at')])
+            ->latest();
 
         $scope = strtolower(trim((string) $request->input('scope', '')));
         if ($scope === 'receipts') {
             $query->where('status', 'COMPLETED')->whereHas('payment');
+        } elseif ($scope === 'kitchen') {
+            $query->where('order_type', 'DINE_IN')->whereIn('status', ['OPEN', 'READY']);
         } elseif ($request->user()->isCashier()) {
-            $query->whereIn('status', ['READY', 'BILLED', 'COMPLETED']);
+            $query->whereIn('status', ['BILLED', 'COMPLETED']);
         }
 
         $filter = strtolower(trim((string) $request->input('filter', 'all')));
@@ -68,9 +74,23 @@ class OrderController extends Controller
                 'payment:id,order_id,payment_method',
             ])
             ->where('order_type', 'DINE_IN')
-            ->whereIn('status', ['OPEN', 'READY', 'BILLED'])
+            ->occupyingTable()
             ->latest('id')
             ->get();
+
+        if ($orders->isNotEmpty()) {
+            $latestTickets = KitchenTicket::query()
+                ->selectRaw('DISTINCT ON (order_id) id, order_id, queue_number, created_at')
+                ->whereIn('order_id', $orders->pluck('id'))
+                ->orderBy('order_id')
+                ->orderByDesc('id')
+                ->get()
+                ->keyBy('order_id');
+
+            $orders->each(function (Order $order) use ($latestTickets): void {
+                $order->setRelation('latestKitchenTicket', $latestTickets->get($order->id));
+            });
+        }
 
         return response()->json([
             'tables' => RestaurantTable::query()
@@ -149,7 +169,7 @@ class OrderController extends Controller
             return response()->json(['message' => 'Open a shift before processing sales.'], 422);
         }
 
-        $order = DB::transaction(function () use ($data, $request) {
+        [$order, $kitchenTicket] = DB::transaction(function () use ($data, $request) {
             $productIds = collect($data['items'])->pluck('product_id');
             $products = Product::whereIn('id', $productIds)->where('is_available', true)->lockForUpdate()->get()->keyBy('id');
             $subtotal = 0;
@@ -171,7 +191,7 @@ class OrderController extends Controller
             }
 
             $table = ! empty($data['table_id']) ? RestaurantTable::lockForUpdate()->find($data['table_id']) : null;
-            if ($table && Order::where('table_id', $table->id)->whereIn('status', ['OPEN', 'READY', 'BILLED'])->exists()) {
+            if ($table && Order::where('table_id', $table->id)->occupyingTable()->exists()) {
                 abort(422, 'That table already has an open ticket. Bill it from Tables to bill.');
             }
 
@@ -198,10 +218,15 @@ class OrderController extends Controller
                 'notes' => $data['notes'] ?? null,
             ]);
 
+            $lines = [];
             foreach ($data['items'] as $item) {
                 $product = $products->get($item['product_id']);
-                $this->addLine($order, $product, $item, $request->user()->id);
+                $lines[] = $this->addLine($order, $product, $item, $request->user()->id);
             }
+
+            $kitchenTicket = $data['order_type'] === 'TAKEAWAY'
+                ? app(KitchenTickets::class)->create($order, $lines)
+                : null;
 
             $order->payment()->create([
                 'payment_method' => $data['payment']['method'],
@@ -214,10 +239,102 @@ class OrderController extends Controller
                 $table->update(['status' => 'AVAILABLE']);
             }
 
-            return $order;
+            return [$order, $kitchenTicket];
         });
 
-        return response()->json($order->load(['items.product', 'payment', 'table', 'cashier', 'server', 'customer']), 201);
+        $payload = $order->load(['items.product', 'payment', 'table', 'cashier', 'server', 'customer'])->toArray();
+        $payload['kitchen_ticket'] = $kitchenTicket ? [
+            'id' => $kitchenTicket->id,
+            'queue_number' => $kitchenTicket->queue_number,
+            'printed' => false,
+        ] : null;
+
+        return response()->json($payload, 201);
+    }
+
+    public function sendToKitchen(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->isCashier() || $request->user()->isAdmin(), 403);
+
+        $data = $request->validate([
+            'table_id' => ['required', 'exists:restaurant_tables,id'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.product_id' => ['required', 'exists:products,id'],
+            'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.notes' => ['nullable', 'string'],
+        ]);
+
+        if ($request->user()->isCashier() && ! $this->cashierShiftOpen($request)) {
+            return response()->json(['message' => 'Open a shift before sending orders to the kitchen.'], 422);
+        }
+
+        [$order, $ticket] = DB::transaction(function () use ($data, $request) {
+            $table = RestaurantTable::query()->lockForUpdate()->findOrFail($data['table_id']);
+            [$order, $lines] = $this->appendTableItems($table, $data['items'], $request->user()->id, false);
+            $ticket = app(KitchenTickets::class)->create($order, $lines);
+
+            ActivityLog::create([
+                'user_id' => $request->user()->id,
+                'action' => 'order.kitchen_sent',
+                'description' => "Cashier sent items to the kitchen for {$order->order_number} on {$table->name}.",
+            ]);
+
+            return [$order, $ticket];
+        });
+
+        $print = $ticket
+            ? app(KitchenTickets::class)->printTicket($ticket)
+            : ['printed' => false, 'message' => 'Nothing new to print.'];
+
+        return response()->json([
+            'order' => $order->load(['items.product', 'items.server', 'payment', 'table', 'cashier', 'server']),
+            'kitchen_print' => $print,
+            'kitchen_ticket' => $ticket ? [
+                'id' => $ticket->id,
+                'queue_number' => $ticket->queue_number,
+                'printed' => (bool) ($print['printed'] ?? false),
+            ] : null,
+        ], 201);
+    }
+
+    public function printKitchenTicket(Request $request, KitchenTicket $ticket): JsonResponse
+    {
+        $this->authorizeKitchenPrint($request);
+        $result = app(KitchenTickets::class)->printTicket($ticket);
+
+        $ok = ($result['printed'] ?? false) || ($result['skipped'] ?? false);
+
+        return response()->json($result, $ok ? 200 : 422);
+    }
+
+    public function kitchenReady(Request $request, Order $order): JsonResponse
+    {
+        abort_unless($request->user()->isCashier() || $request->user()->isAdmin(), 403);
+        abort_unless($order->order_type === 'DINE_IN', 422, 'Only dine-in kitchen tickets can be marked ready.');
+        abort_unless(in_array($order->status, ['OPEN', 'READY'], true), 422, 'This order is no longer in the kitchen.');
+
+        $order->update(['kitchen_ready_at' => now()]);
+
+        return response()->json($order->fresh()->load(['items.product', 'table']));
+    }
+
+    public function printKitchenTickets(Request $request, Order $order): JsonResponse
+    {
+        $this->authorizeKitchenPrint($request);
+        $tickets = $order->kitchenTickets()->whereNull('printed_at')->orderBy('id')->get();
+        if ($tickets->isEmpty()) {
+            return response()->json(['printed' => true, 'message' => 'Kitchen bills for this order are already printed.']);
+        }
+
+        $jobs = app(KitchenTickets::class);
+        foreach ($tickets as $ticket) {
+            $result = $jobs->printTicket($ticket);
+            if (! ($result['printed'] ?? false) && ! ($result['skipped'] ?? false)) {
+                return response()->json($result, 422);
+            }
+        }
+
+        return response()->json(['printed' => true]);
     }
 
     public function show(Request $request, Order $order): JsonResponse
@@ -292,7 +409,7 @@ class OrderController extends Controller
                 'subtotal' => $subtotal,
                 'discount' => $discount,
                 'total' => $total,
-                'status' => 'BILLED',
+                'status' => 'COMPLETED',
             ]);
 
             $order->payment()->create([
@@ -303,13 +420,19 @@ class OrderController extends Controller
             ]);
 
             if ($order->table_id) {
-                RestaurantTable::whereKey($order->table_id)->update(['status' => 'OCCUPIED']);
+                $stillActive = Order::where('table_id', $order->table_id)
+                    ->whereIn('status', ['OPEN', 'READY', 'BILLED'])
+                    ->whereKeyNot($order->id)
+                    ->exists();
+                if (! $stillActive) {
+                    RestaurantTable::whereKey($order->table_id)->update(['status' => 'AVAILABLE']);
+                }
             }
 
             ActivityLog::create([
                 'user_id' => $request->user()->id,
                 'action' => 'order.billed',
-                'description' => "Bill created for {$order->order_number}.",
+                'description' => "Bill paid and completed for {$order->order_number}.",
             ]);
 
             return $order;
@@ -423,7 +546,7 @@ class OrderController extends Controller
         ]);
 
         try {
-            $order = $this->saveServerItems($data, $request);
+            [$order] = $this->saveServerItems($data, $request);
         } catch (QueryException $exception) {
             report($exception);
 
@@ -436,7 +559,7 @@ class OrderController extends Controller
             DB::reconnect();
 
             try {
-                $order = $this->saveServerItems($data, $request);
+                [$order] = $this->saveServerItems($data, $request);
             } catch (QueryException $retryException) {
                 report($retryException);
 
@@ -471,72 +594,14 @@ class OrderController extends Controller
 
     /**
      * @param  array<string, mixed>  $data
+     * @return array{0: Order, 1: ?\App\Models\KitchenTicket}
      */
-    private function saveServerItems(array $data, Request $request): Order
+    private function saveServerItems(array $data, Request $request): array
     {
-        return DB::transaction(function () use ($data, $request) {
+        [$order, $ticket] = DB::transaction(function () use ($data, $request) {
             $table = RestaurantTable::query()->lockForUpdate()->findOrFail($data['table_id']);
-
-            if (Order::query()
-                ->where('table_id', $table->id)
-                ->where('status', 'BILLED')
-                ->exists()) {
-                abort(422, 'This table is waiting for payment at the cashier. Mark it paid before starting a new visit.');
-            }
-
-            $order = Order::query()
-                ->where('table_id', $table->id)
-                ->whereIn('status', ['OPEN', 'READY'])
-                ->orderByRaw("CASE WHEN status = 'OPEN' THEN 0 ELSE 1 END")
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->first();
-
-            $productIds = collect($data['items'])->pluck('product_id')->unique();
-            $products = Product::whereIn('id', $productIds)->where('is_available', true)->get()->keyBy('id');
-
-            if (! $order) {
-                $order = Order::create([
-                    'order_number' => 'TBL-'.now()->format('YmdHis').'-'.Str::upper(Str::random(4)),
-                    'order_type' => 'DINE_IN',
-                    'table_id' => $table->id,
-                    'cashier_id' => null,
-                    'server_id' => $request->user()->id,
-                    'subtotal' => 0,
-                    'discount' => 0,
-                    'total' => 0,
-                    'status' => 'OPEN',
-                    'notes' => $data['notes'] ?? null,
-                ]);
-            } else {
-                $order->update([
-                    'server_id' => $request->user()->id,
-                    'status' => 'OPEN',
-                    'notes' => $data['notes'] ?? $order->notes,
-                ]);
-            }
-
-            foreach ($data['items'] as $item) {
-                $product = $products->get($item['product_id']);
-                abort_unless($product, 422, 'One or more products are unavailable.');
-                $this->addLine($order, $product, $item, $request->user()->id);
-            }
-
-            if (Order::query()
-                ->where('table_id', $table->id)
-                ->where('status', 'OPEN')
-                ->whereKeyNot($order->id)
-                ->exists()) {
-                $this->consolidateDuplicateOpenOrders($order, $table);
-            }
-
-            $order->refresh();
-            $subtotal = (float) $order->items()->sum('line_total');
-            $order->update([
-                'subtotal' => $subtotal,
-                'total' => max(0, $subtotal - (float) $order->discount),
-            ]);
-            $table->update(['status' => 'OCCUPIED']);
+            [$order, $lines] = $this->appendTableItems($table, $data['items'], $request->user()->id, true, $data['notes'] ?? null);
+            $ticket = app(KitchenTickets::class)->create($order, $lines);
 
             ActivityLog::create([
                 'user_id' => $request->user()->id,
@@ -544,14 +609,89 @@ class OrderController extends Controller
                 'description' => "Server added items to {$order->order_number} on {$table->name}.",
             ]);
 
-            return $order;
+            return [$order, $ticket];
         });
+
+        if ($ticket) {
+            app(KitchenTickets::class)->printTicket($ticket);
+        }
+
+        return [$order, $ticket];
+    }
+
+    /**
+     * @param  list<array{product_id: int, quantity: int, notes?: string|null}>  $items
+     * @return array{0: Order, 1: list<array{order_item_id: int, product_name: string, quantity: int, notes: string|null}>}
+     */
+    private function appendTableItems(RestaurantTable $table, array $items, int $userId, bool $fromServer, ?string $notes = null): array
+    {
+        if (Order::query()->where('table_id', $table->id)->where('status', 'BILLED')->whereDoesntHave('payment')->exists()) {
+            abort(422, 'This table is waiting for payment. Settle the bill before adding more dishes.');
+        }
+
+        $order = Order::query()
+            ->where('table_id', $table->id)
+            ->whereIn('status', ['OPEN', 'READY'])
+            ->orderByRaw("CASE WHEN status = 'OPEN' THEN 0 ELSE 1 END")
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->first();
+
+        $products = Product::whereIn('id', collect($items)->pluck('product_id')->unique())
+            ->where('is_available', true)
+            ->get()
+            ->keyBy('id');
+
+        if (! $order) {
+            $order = Order::create([
+                'order_number' => 'TBL-'.now()->format('YmdHis').'-'.Str::upper(Str::random(4)),
+                'order_type' => 'DINE_IN',
+                'table_id' => $table->id,
+                'cashier_id' => $fromServer ? null : $userId,
+                'server_id' => $fromServer ? $userId : null,
+                'subtotal' => 0,
+                'discount' => 0,
+                'total' => 0,
+                'status' => 'OPEN',
+                'notes' => $notes,
+            ]);
+        } else {
+            $order->update([
+                'server_id' => $fromServer ? $userId : $order->server_id,
+                'cashier_id' => $fromServer ? $order->cashier_id : ($order->cashier_id ?? $userId),
+                'status' => 'OPEN',
+                'notes' => $notes ?? $order->notes,
+            ]);
+        }
+
+        $lines = [];
+        foreach ($items as $item) {
+            $product = $products->get($item['product_id']);
+            abort_unless($product, 422, 'One or more products are unavailable.');
+            $lines[] = $this->addLine($order, $product, $item, $fromServer ? $userId : null);
+        }
+
+        if (Order::query()->where('table_id', $table->id)->where('status', 'OPEN')->whereKeyNot($order->id)->exists()) {
+            $this->consolidateDuplicateOpenOrders($order, $table);
+        }
+
+        $order->refresh();
+        $subtotal = (float) $order->items()->sum('line_total');
+        $order->update([
+            'subtotal' => $subtotal,
+            'total' => max(0, $subtotal - (float) $order->discount),
+            'kitchen_ready_at' => null,
+        ]);
+        $table->update(['status' => 'OCCUPIED']);
+
+        return [$order, $lines];
     }
 
     /**
      * @param  array{quantity: int, notes?: string|null}  $item
+     * @return array{order_item_id: int, product_name: string, quantity: int, notes: string|null}
      */
-    private function addLine(Order $order, Product $product, array $item, ?int $serverId = null): void
+    private function addLine(Order $order, Product $product, array $item, ?int $serverId = null): array
     {
         $addQty = (int) $item['quantity'];
         $unit = $product->sellablePrice();
@@ -565,28 +705,47 @@ class OrderController extends Controller
             $inventory->decrement('current_stock', $addQty);
         }
 
+        $note = $item['notes'] ?? null;
+
         if ($existing) {
             $quantity = $existing->quantity + $addQty;
             $existing->update([
                 'quantity' => $quantity,
                 'unit_price' => $unit,
                 'line_total' => $unit * $quantity,
-                'server_id' => $serverId,
-                'notes' => $item['notes'] ?? $existing->notes,
+                'server_id' => $serverId ?? $existing->server_id,
+                'notes' => $note ?? $existing->notes,
             ]);
 
-            return;
+            return [
+                'order_item_id' => $existing->id,
+                'product_name' => $existing->product_name ?: $product->name,
+                'quantity' => $addQty,
+                'notes' => $note ?? $existing->notes,
+            ];
         }
 
-        $order->items()->create([
+        $line = $order->items()->create([
             'product_id' => $product->id,
             'product_name' => $product->name,
             'server_id' => $serverId,
             'quantity' => $addQty,
             'unit_price' => $unit,
             'line_total' => $unit * $addQty,
-            'notes' => $item['notes'] ?? null,
+            'notes' => $note,
         ]);
+
+        return [
+            'order_item_id' => $line->id,
+            'product_name' => $product->name,
+            'quantity' => $addQty,
+            'notes' => $note,
+        ];
+    }
+
+    private function authorizeKitchenPrint(Request $request): void
+    {
+        abort_unless($request->user()->isCashier() || $request->user()->isAdmin() || $request->user()->isServer(), 403);
     }
 
     private function cashierShiftOpen(Request $request): bool

@@ -8,7 +8,7 @@ use App\Models\Product;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
-class AaniverMenuSeeder extends Seeder
+class VaavikkaraiMenuSeeder extends Seeder
 {
     /**
      * Replace the selling menu. Past order lines keep a stored item name.
@@ -194,7 +194,7 @@ class AaniverMenuSeeder extends Seeder
             [
                 'name' => 'Healthy Starters & Light Bites',
                 'items' => [
-                    ['name' => 'Aaniver Rainbow Salad', 'price_label' => $tbc, 'description' => 'A colourful mix of fresh vegetables and greens.'],
+                    ['name' => 'Vaavikkarai Rainbow Salad', 'price_label' => $tbc, 'description' => 'A colourful mix of fresh vegetables and greens.'],
                     ['name' => 'Sprouted Green Gram Salad', 'price_label' => $tbc, 'description' => 'Fresh sprouted green gram with seasonal vegetables.'],
                     ['name' => 'Egg Power Salad', 'price_label' => $tbc, 'description' => 'A protein-rich salad with egg.'],
                     ['name' => 'Grilled Paneer', 'price_label' => $tbc],
@@ -203,7 +203,7 @@ class AaniverMenuSeeder extends Seeder
                 ],
             ],
             [
-                'name' => 'Aaniver Wellness Meals',
+                'name' => 'Vaavikkarai Wellness Meals',
                 'description' => 'LKR 599 per plate.',
                 'items' => [
                     ['name' => 'Detox Plate', 'price' => 599, 'description' => 'Mixed millet, steamed vegetables, leafy greens, sprouts, fresh salad and herbal tea.'],

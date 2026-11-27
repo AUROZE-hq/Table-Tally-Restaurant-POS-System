@@ -8,7 +8,7 @@ class Order extends Model
 {
     protected $fillable = [
         'order_number', 'order_type', 'table_id', 'cashier_id', 'server_id', 'customer_id',
-        'subtotal', 'discount', 'total', 'status', 'notes',
+        'subtotal', 'discount', 'total', 'status', 'kitchen_ready_at', 'notes',
     ];
 
     protected function casts(): array
@@ -17,6 +17,7 @@ class Order extends Model
             'subtotal' => 'decimal:2',
             'discount' => 'decimal:2',
             'total' => 'decimal:2',
+            'kitchen_ready_at' => 'datetime',
         ];
     }
 
@@ -48,5 +49,24 @@ class Order extends Model
     public function payment()
     {
         return $this->hasOne(Payment::class);
+    }
+
+    public function kitchenTickets()
+    {
+        return $this->hasMany(KitchenTicket::class);
+    }
+
+    public function latestKitchenTicket()
+    {
+        return $this->hasOne(KitchenTicket::class)->latestOfMany();
+    }
+
+    /** Dine-in tickets that still hold a table (not paid / not completed). */
+    public function scopeOccupyingTable($query)
+    {
+        return $query->where(function ($active) {
+            $active->whereIn('status', ['OPEN', 'READY'])
+                ->orWhere(fn ($billed) => $billed->where('status', 'BILLED')->whereDoesntHave('payment'));
+        });
     }
 }

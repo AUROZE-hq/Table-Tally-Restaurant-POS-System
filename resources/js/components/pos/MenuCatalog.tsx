@@ -129,7 +129,7 @@ export default function MenuCatalog({ categories, products, activeCategory, sear
                 );
             })}
             <div className="rounded-xl bg-[#102b2b] px-4 py-3 text-white">
-                <p className="text-sm font-semibold">Aaniver Restaurant</p>
+                <p className="text-sm font-semibold">Vaavikkarai Restaurant</p>
                 <p className="text-xs text-white/70">34/4, Kannakai amman Road, Poombukar, Batticaloa</p>
                 <p className="mt-1 text-xs font-semibold tracking-wide text-[#e6a06c]">You Are What You Eat</p>
                 <p className="mt-2 text-[11px] leading-5 text-white/75">
